@@ -12,7 +12,7 @@ export function initRenderer(context) {
     ctx = context;
 }
 
-export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state) {
+export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state, orbitals) {
     gameTime += dt || 1 / 60;
 
     // Clear
@@ -25,6 +25,18 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
 
     // Background tiles
     drawBackground(ctx, camera);
+
+    // Zone projectiles (draw under everything)
+    if (projectiles) {
+        for (let i = 0; i < projectiles.length; i++) {
+            const p = projectiles[i];
+            if (!p || !p.active) continue;
+            if (p.type === 'zone') {
+                if (!isInView(camera, p.x, p.y, p.radius + 20)) continue;
+                drawZone(p);
+            }
+        }
+    }
 
     // XP gems
     if (xpGems) {
@@ -46,15 +58,23 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         }
     }
 
+    // Orbitals (draw around player)
+    if (orbitals) {
+        for (const orb of orbitals) {
+            drawOrbital(orb);
+        }
+    }
+
     // Player
     drawPlayerEntity(player);
 
-    // Projectiles
+    // Projectiles (non-zone)
     if (projectiles) {
         for (let i = 0; i < projectiles.length; i++) {
             const p = projectiles[i];
             if (!p || !p.active) continue;
-            if (!isInView(camera, p.x, p.y, 20)) continue;
+            if (p.type === 'zone') continue; // Already drawn
+            if (!isInView(camera, p.x, p.y, Math.max(p.radius, 20) + 10)) continue;
             drawProjectile(p);
         }
     }
@@ -123,25 +143,19 @@ function drawPlayerEntity(player) {
     ctx.save();
     ctx.translate(x, y + breathe);
     ctx.rotate(aimAngle);
-    // Arm
     ctx.fillStyle = '#3377CC';
     ctx.fillRect(8, -3, 14, 6);
-    // Gun
     ctx.fillStyle = '#888899';
     ctx.fillRect(18, -4, 14, 8);
-    // Barrel
     ctx.fillStyle = '#666677';
     ctx.fillRect(30, -2, 8, 4);
-    // Muzzle
     ctx.fillStyle = '#AAAABB';
     ctx.fillRect(20, -3, 3, 6);
     ctx.restore();
 
     // Eyes (facing aim direction)
-    const eyeDist = 5;
-    const eyeAngle = aimAngle;
-    const eyeOffX = Math.cos(eyeAngle) * 3;
-    const eyeOffY = Math.sin(eyeAngle) * 3;
+    const eyeOffX = Math.cos(aimAngle) * 3;
+    const eyeOffY = Math.sin(aimAngle) * 3;
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
     ctx.arc(x - 4 + eyeOffX, y - 4 + eyeOffY + breathe, 3, 0, Math.PI * 2);
@@ -149,7 +163,6 @@ function drawPlayerEntity(player) {
     ctx.beginPath();
     ctx.arc(x + 4 + eyeOffX, y - 4 + eyeOffY + breathe, 3, 0, Math.PI * 2);
     ctx.fill();
-    // Pupils
     ctx.fillStyle = '#112244';
     ctx.beginPath();
     ctx.arc(x - 4 + eyeOffX * 1.4, y - 4 + eyeOffY * 1.4 + breathe, 1.5, 0, Math.PI * 2);
@@ -163,8 +176,8 @@ function drawPlayerEntity(player) {
 }
 
 function drawEnemyEntity(e) {
-    // Default circle enemy — will be expanded per type
-    ctx.fillStyle = e.color || '#FF4444';
+    // Slow tint
+    const slowed = e.slowTimer > 0;
 
     // Shadow
     ctx.save();
@@ -174,30 +187,65 @@ function drawEnemyEntity(e) {
     ctx.fill();
     ctx.restore();
 
+    // Exploder pulsing glow
+    if (e.type === 'exploder') {
+        const pulse = 0.3 + Math.sin(gameTime * 8 + e.pulseTimer) * 0.2;
+        drawGlow(ctx, e.x, e.y, e.radius * 2.5, '#FF2222', pulse);
+        if (e.chargeState === 'charging') {
+            drawGlow(ctx, e.x, e.y, e.radius * 3, '#FFFF00', 0.4);
+        }
+    }
+
+    // Elite glow
+    if (e.isElite) {
+        drawGlow(ctx, e.x, e.y, e.radius * 2, '#FFD700', 0.2);
+    }
+
     // Body
-    ctx.fillStyle = e.color || '#FF4444';
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF4444');
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
     ctx.fill();
+
+    // Frost ring if slowed
+    if (slowed) {
+        ctx.strokeStyle = '#AADDFF';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Elite crown indicator
+    if (e.isElite) {
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    }
 
     // Eyes facing player direction
     if (e.targetAngle !== undefined) {
         const eyeOff = Math.min(e.radius * 0.3, 4);
         const ex = Math.cos(e.targetAngle) * eyeOff;
         const ey = Math.sin(e.targetAngle) * eyeOff;
+        const eyeScale = Math.min(e.radius / 12, 1.5);
         ctx.fillStyle = '#FFFFFF';
         ctx.beginPath();
-        ctx.arc(e.x - 3 + ex, e.y - 2 + ey, 2.5, 0, Math.PI * 2);
+        ctx.arc(e.x - 3 * eyeScale + ex, e.y - 2 * eyeScale + ey, 2.5 * eyeScale, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(e.x + 3 + ex, e.y - 2 + ey, 2.5, 0, Math.PI * 2);
+        ctx.arc(e.x + 3 * eyeScale + ex, e.y - 2 * eyeScale + ey, 2.5 * eyeScale, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = e.type === 'exploder' ? '#FF0000' : '#000';
         ctx.beginPath();
-        ctx.arc(e.x - 3 + ex * 1.3, e.y - 2 + ey * 1.3, 1.2, 0, Math.PI * 2);
+        ctx.arc(e.x - 3 * eyeScale + ex * 1.3, e.y - 2 * eyeScale + ey * 1.3, 1.2 * eyeScale, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(e.x + 3 + ex * 1.3, e.y - 2 + ey * 1.3, 1.2, 0, Math.PI * 2);
+        ctx.arc(e.x + 3 * eyeScale + ex * 1.3, e.y - 2 * eyeScale + ey * 1.3, 1.2 * eyeScale, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -213,13 +261,10 @@ function drawXPGem(gem) {
     const pulse = 1 + Math.sin(gameTime * 6 + gem.x) * 0.15;
     const r = gem.radius * pulse;
 
-    // Glow
     drawGlow(ctx, gem.x, gem.y, r * 2.5, gem.color, 0.15);
 
-    // Gem
     ctx.fillStyle = gem.color;
     ctx.beginPath();
-    // Diamond shape
     ctx.moveTo(gem.x, gem.y - r);
     ctx.lineTo(gem.x + r * 0.7, gem.y);
     ctx.lineTo(gem.x, gem.y + r);
@@ -227,7 +272,6 @@ function drawXPGem(gem) {
     ctx.closePath();
     ctx.fill();
 
-    // Shine
     ctx.fillStyle = '#FFFFFF';
     ctx.globalAlpha = 0.5;
     ctx.beginPath();
@@ -237,6 +281,28 @@ function drawXPGem(gem) {
 }
 
 function drawProjectile(p) {
+    switch (p.type) {
+        case 'lightning':
+            drawLightning(p);
+            return;
+        case 'flame':
+            drawFlame(p);
+            return;
+        case 'boomerang':
+            drawBoomerang(p);
+            return;
+        case 'frostburst':
+            drawFrostBurst(p);
+            return;
+        case 'enemy':
+            drawEnemyProjectile(p);
+            return;
+        default:
+            drawNormalProjectile(p);
+    }
+}
+
+function drawNormalProjectile(p) {
     // Glow
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = p.color || COLOR_BULLET;
@@ -253,6 +319,165 @@ function drawProjectile(p) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius * 0.6, 0, Math.PI * 2);
     ctx.fill();
+}
+
+function drawLightning(p) {
+    // Draw a jagged line between endpoints
+    ctx.strokeStyle = p.color || '#88CCFF';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 1 - (p.lifetime / p.maxLifetime);
+
+    const dx = p.x2 - p.x1;
+    const dy = p.y2 - p.y1;
+    const steps = 6;
+
+    ctx.beginPath();
+    ctx.moveTo(p.x1, p.y1);
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const jx = (Math.random() - 0.5) * 15;
+        const jy = (Math.random() - 0.5) * 15;
+        ctx.lineTo(p.x1 + dx * t + jx, p.y1 + dy * t + jy);
+    }
+    ctx.lineTo(p.x2, p.y2);
+    ctx.stroke();
+
+    // Bright center line
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.x1, p.y1);
+    ctx.lineTo(p.x2, p.y2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1.0;
+}
+
+function drawFlame(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const r = p.radius * (1 + (1 - fade) * 1.5);
+
+    ctx.globalAlpha = fade * 0.8;
+    // Outer flame
+    ctx.fillStyle = '#FF4400';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner flame
+    ctx.fillStyle = p.color || '#FF6622';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Core
+    ctx.fillStyle = '#FFDD44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+}
+
+function drawBoomerang(p) {
+    const spin = gameTime * 12;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(spin);
+
+    // Boomerang shape
+    ctx.fillStyle = p.color || '#44DDAA';
+    ctx.beginPath();
+    ctx.moveTo(0, -p.radius);
+    ctx.quadraticCurveTo(p.radius * 0.8, -p.radius * 0.3, p.radius, 0);
+    ctx.quadraticCurveTo(p.radius * 0.5, p.radius * 0.2, 0, p.radius * 0.3);
+    ctx.quadraticCurveTo(-p.radius * 0.5, p.radius * 0.2, -p.radius, 0);
+    ctx.quadraticCurveTo(-p.radius * 0.8, -p.radius * 0.3, 0, -p.radius);
+    ctx.fill();
+
+    // Shine
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(0, -p.radius * 0.3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    ctx.restore();
+}
+
+function drawFrostBurst(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    ctx.globalAlpha = fade * 0.6;
+    ctx.fillStyle = p.color || '#AADDFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * (1 + (1 - fade)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+}
+
+function drawEnemyProjectile(p) {
+    // Enemy bullet — distinct color
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#AAFF44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = '#DDFF88';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#AAFF44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawZone(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const pulse = 1 + Math.sin(gameTime * 4) * 0.05;
+    const r = p.radius * pulse;
+
+    // Outer glow
+    ctx.globalAlpha = fade * 0.15;
+    ctx.fillStyle = p.color || '#66FF44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main zone
+    ctx.globalAlpha = fade * 0.25;
+    ctx.fillStyle = p.color || '#66FF44';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border ring
+    ctx.globalAlpha = fade * 0.4;
+    ctx.strokeStyle = p.color || '#66FF44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1.0;
+}
+
+function drawOrbital(orb) {
+    // Glow
+    drawGlow(ctx, orb.x, orb.y, orb.radius * 2.5, orb.color, 0.3);
+
+    // Core
+    ctx.fillStyle = orb.color;
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shine
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(orb.x - 2, orb.y - 2, orb.radius * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
 }
 
 // --- HUD (screen space) ---
@@ -289,10 +514,11 @@ function drawHUD(player, state) {
     ctx.textAlign = 'left';
     let wy = 38;
     for (const weapon of player.weapons) {
-        const levelPips = '■'.repeat(weapon.level) + '□'.repeat(8 - weapon.level);
+        const maxLvl = 8;
+        const levelPips = '\u25A0'.repeat(weapon.level) + '\u25A1'.repeat(maxLvl - weapon.level);
         ctx.fillStyle = '#888';
         ctx.fillText(`${weapon.id}`, 12, wy);
-        ctx.fillStyle = weapon.level >= 8 ? '#FFD700' : '#44FF88';
+        ctx.fillStyle = weapon.level >= maxLvl ? '#FFD700' : '#44FF88';
         ctx.fillText(levelPips, 100, wy);
         wy += 14;
     }
@@ -301,10 +527,11 @@ function drawHUD(player, state) {
     if (player.passives.length > 0) {
         wy += 4;
         for (const passive of player.passives) {
+            const maxLvl = 5;
             ctx.fillStyle = '#777';
             ctx.fillText(`${passive.id}`, 12, wy);
             ctx.fillStyle = '#88AAFF';
-            ctx.fillText('■'.repeat(passive.level) + '□'.repeat(5 - passive.level), 100, wy);
+            ctx.fillText('\u25A0'.repeat(passive.level) + '\u25A1'.repeat(maxLvl - passive.level), 100, wy);
             wy += 14;
         }
     }
@@ -320,7 +547,6 @@ export function drawCrosshair(ctx) {
     ctx.strokeStyle = '#FFFFFF';
     ctx.lineWidth = 1.5;
     ctx.globalAlpha = 0.7;
-    // Cross
     ctx.beginPath();
     ctx.moveTo(mouse.x - size, mouse.y);
     ctx.lineTo(mouse.x - 4, mouse.y);
@@ -331,7 +557,6 @@ export function drawCrosshair(ctx) {
     ctx.moveTo(mouse.x, mouse.y + 4);
     ctx.lineTo(mouse.x, mouse.y + size);
     ctx.stroke();
-    // Center dot
     ctx.fillStyle = '#FF4444';
     ctx.beginPath();
     ctx.arc(mouse.x, mouse.y, 1.5, 0, Math.PI * 2);

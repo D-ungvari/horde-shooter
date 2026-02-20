@@ -3,9 +3,9 @@ import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as update
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
-import { updateWeapons, resetWeaponCooldowns } from './weapons.js';
+import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
-import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy } from './enemy.js';
+import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion } from './enemy.js';
 import { resetSpawner, updateSpawner } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
@@ -94,7 +94,6 @@ function showGameOver() {
     document.getElementById('final-kills').textContent = player.killCount;
     document.getElementById('final-time').textContent = formatTime(survivalTime);
 
-    // Update level display if element exists
     const levelEl = document.getElementById('final-level');
     if (levelEl) levelEl.textContent = player.level;
 }
@@ -121,7 +120,6 @@ function loop(timestamp) {
             update(dt);
             render(dt);
 
-            // Check for pending level-ups after update
             if (pendingLevelUps > 0) {
                 triggerLevelUp();
             }
@@ -136,7 +134,6 @@ function loop(timestamp) {
         if (!isKeyDown('escape')) escapeHeld = false;
         render(0);
     } else if (state === STATE.LEVEL_UP) {
-        // Keep rendering the game in background (frozen)
         render(0);
     } else if (state === STATE.GAME_OVER) {
         render(0);
@@ -154,9 +151,8 @@ async function triggerLevelUp() {
         await showLevelUpScreen(player);
     }
 
-    // Resume gameplay
     state = STATE.PLAYING;
-    lastTime = performance.now(); // Reset dt so no time skip
+    lastTime = performance.now();
 }
 
 function update(dt) {
@@ -173,8 +169,8 @@ function update(dt) {
     // Weapons fire (always tick cooldowns)
     updateWeapons(player, dt);
 
-    // Move projectiles
-    updateProjectiles(dt);
+    // Move projectiles (pass player for boomerang return)
+    updateProjectiles(dt, player);
 
     // Enemy spawning + AI
     updateSpawner(player, dt);
@@ -197,20 +193,33 @@ function update(dt) {
         insertIntoHash(e);
     });
 
-    // Projectile vs Enemy collisions
+    // Player projectile vs Enemy collisions
     projectilePool.forEach(p => {
+        // Skip enemy projectiles — they hit the player, not enemies
+        if (p.type === 'enemy') return;
+        // Skip visual-only projectiles
+        if (p.type === 'lightning' || p.type === 'frostburst') return;
+        if (p.damage <= 0) return;
+
         const nearby = queryHash(p.x, p.y, p.radius + 30);
         for (const e of nearby) {
             if (!e.active) continue;
             if (p.hitSet.has(e._poolIndex)) continue;
             if (circlesOverlap(p, e)) {
-                // Hit!
                 e.health -= p.damage;
                 p.hitSet.add(e._poolIndex);
 
                 if (e.health <= 0) {
                     player.killCount++;
-                    // Spawn XP gems at enemy position
+
+                    // Exploder death AoE
+                    if (e.type === 'exploder' && e.explosionRadius > 0) {
+                        const explosionDmg = triggerExplosion(e, player);
+                        if (explosionDmg > 0) {
+                            damagePlayer(player, explosionDmg);
+                        }
+                    }
+
                     spawnXPBurst(e.x, e.y, e.xpValue);
                     releaseEnemy(e);
                 }
@@ -225,7 +234,21 @@ function update(dt) {
         }
     });
 
-    // Enemy vs Player collisions
+    // Enemy projectile vs Player collisions
+    projectilePool.forEach(p => {
+        if (p.type !== 'enemy') return;
+        const dx = p.x - player.x;
+        const dy = p.y - player.y;
+        const radSum = p.radius + player.radius;
+        if (dx * dx + dy * dy < radSum * radSum) {
+            const hit = damagePlayer(player, p.damage);
+            if (hit) {
+                projectilePool.release(p);
+            }
+        }
+    });
+
+    // Enemy vs Player body collisions
     const nearPlayer = queryHash(player.x, player.y, player.radius + 30);
     for (const e of nearPlayer) {
         if (!e.active) continue;
@@ -251,14 +274,16 @@ function update(dt) {
 }
 
 function render(dt) {
-    // Pass pool arrays for rendering
+    // Get orbital positions for rendering
+    const orbitals = player ? getOrbitalPositions(player) : [];
+
     renderGame(camera, player,
         enemyPool.getAll(),
         projectilePool.getAll(),
         xpPool.getAll(),
-        dt, state);
+        dt, state, orbitals);
 
-    // Crosshair (only when actively playing or paused)
+    // Crosshair
     if (state === STATE.PLAYING || state === STATE.PAUSED) {
         drawCrosshair(ctx);
     }
