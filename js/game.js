@@ -7,7 +7,10 @@ import { updateWeapons, resetWeaponCooldowns } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
 import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy } from './enemy.js';
 import { resetSpawner, updateSpawner } from './spawner.js';
-import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap, distSq } from './physics.js';
+import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
+import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
+import { grantXP, recalculateStats } from './stats.js';
+import { showLevelUpScreen, hideLevelUpScreen } from './levelUp.js';
 import { formatTime } from './utils.js';
 
 const STATE = {
@@ -25,9 +28,10 @@ let player, camera;
 let lastTime;
 let survivalTime;
 let escapeHeld = false;
+let pendingLevelUps = 0;
 
 // Pool references
-let enemyPool, projectilePool;
+let enemyPool, projectilePool, xpPool;
 
 export function initGame() {
     canvas = document.getElementById('game-canvas');
@@ -45,6 +49,7 @@ export function initGame() {
 
     enemyPool = getEnemyPool();
     projectilePool = getProjectilePool();
+    xpPool = getXPPool();
 
     state = STATE.MENU;
     showMenu();
@@ -59,11 +64,14 @@ function startPlaying() {
     camera.x = player.x;
     camera.y = player.y;
     survivalTime = 0;
+    pendingLevelUps = 0;
 
     clearEnemies();
     clearProjectiles();
+    clearXPGems();
     resetWeaponCooldowns();
     resetSpawner();
+    recalculateStats(player);
 
     state = STATE.PLAYING;
     hideAllOverlays();
@@ -82,9 +90,13 @@ function hideAllOverlays() {
 
 function showGameOver() {
     document.getElementById('gameover-screen').style.display = 'flex';
-    document.getElementById('final-score').textContent = player.killCount * 100;
+    document.getElementById('final-score').textContent = player.killCount * 100 + (player.level - 1) * 50;
     document.getElementById('final-kills').textContent = player.killCount;
     document.getElementById('final-time').textContent = formatTime(survivalTime);
+
+    // Update level display if element exists
+    const levelEl = document.getElementById('final-level');
+    if (levelEl) levelEl.textContent = player.level;
 }
 
 function loop(timestamp) {
@@ -108,6 +120,11 @@ function loop(timestamp) {
             survivalTime += dt;
             update(dt);
             render(dt);
+
+            // Check for pending level-ups after update
+            if (pendingLevelUps > 0) {
+                triggerLevelUp();
+            }
         }
     } else if (state === STATE.PAUSED) {
         if (isKeyDown('escape') && !escapeHeld) {
@@ -118,12 +135,28 @@ function loop(timestamp) {
         }
         if (!isKeyDown('escape')) escapeHeld = false;
         render(0);
+    } else if (state === STATE.LEVEL_UP) {
+        // Keep rendering the game in background (frozen)
+        render(0);
     } else if (state === STATE.GAME_OVER) {
         render(0);
     }
 
     resetFrameInput();
     requestAnimationFrame(loop);
+}
+
+async function triggerLevelUp() {
+    state = STATE.LEVEL_UP;
+
+    while (pendingLevelUps > 0) {
+        pendingLevelUps--;
+        await showLevelUpScreen(player);
+    }
+
+    // Resume gameplay
+    state = STATE.PLAYING;
+    lastTime = performance.now(); // Reset dt so no time skip
 }
 
 function update(dt) {
@@ -137,14 +170,8 @@ function update(dt) {
     };
     updateInputCamera(cameraAPI);
 
-    // Weapons fire
-    const mouse = getMouse();
-    if (mouse.down || mouse.clicked) {
-        updateWeapons(player, dt);
-    } else {
-        // Still tick cooldowns even when not firing
-        updateWeapons(player, dt);
-    }
+    // Weapons fire (always tick cooldowns)
+    updateWeapons(player, dt);
 
     // Move projectiles
     updateProjectiles(dt);
@@ -152,6 +179,15 @@ function update(dt) {
     // Enemy spawning + AI
     updateSpawner(player, dt);
     updateEnemies(player, dt);
+
+    // XP gem magnet + collection
+    const collectedXP = updateXPGems(player, dt);
+    if (collectedXP > 0) {
+        const levelUps = grantXP(player, collectedXP);
+        if (levelUps > 0) {
+            pendingLevelUps += levelUps;
+        }
+    }
 
     // --- Spatial hash collision phase ---
     clearSpatialHash();
@@ -174,7 +210,8 @@ function update(dt) {
 
                 if (e.health <= 0) {
                     player.killCount++;
-                    // TODO: spawn XP gems, particles, sound
+                    // Spawn XP gems at enemy position
+                    spawnXPBurst(e.x, e.y, e.xpValue);
                     releaseEnemy(e);
                 }
 
@@ -218,11 +255,13 @@ function render(dt) {
     renderGame(camera, player,
         enemyPool.getAll(),
         projectilePool.getAll(),
-        null, // xpGems - TODO
+        xpPool.getAll(),
         dt, state);
 
-    // Crosshair
-    drawCrosshair(ctx);
+    // Crosshair (only when actively playing or paused)
+    if (state === STATE.PLAYING || state === STATE.PAUSED) {
+        drawCrosshair(ctx);
+    }
 
     // Timer
     if (survivalTime !== undefined && state !== STATE.MENU) {

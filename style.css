@@ -155,7 +155,33 @@ canvas {
 .choice-card.evolution {
     border-color: #FFD700;
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
+    background: #1a1a10;
 }
+
+.choice-card.evolution:hover {
+    border-color: #FFE844;
+    background: #2a2a15;
+    box-shadow: 0 4px 30px rgba(255, 215, 0, 0.4);
+}
+
+.choice-card.evolution .card-level {
+    color: #FFD700;
+    font-weight: bold;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+}
+
+/* Slide-in animation for cards */
+@keyframes cardSlideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.choice-card {
+    animation: cardSlideIn 0.3s ease-out both;
+}
+
+.choice-card:nth-child(2) { animation-delay: 0.08s; }
+.choice-card:nth-child(3) { animation-delay: 0.16s; }
 
 /* --- Game Over --- */
 

@@ -272,17 +272,42 @@ function drawHUD(player, state) {
 
     // XP bar (bottom, full width)
     const xpRatio = player.xp / player.xpToNext;
-    drawBar(ctx, 0, CANVAS_HEIGHT - 12, CANVAS_WIDTH, 12, xpRatio, '#44FF88', '#111', '#333');
+    drawBar(ctx, 0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16, xpRatio, '#44FF88', '#111', '#333');
     ctx.fillStyle = '#fff';
-    ctx.font = '10px monospace';
+    ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Lv ${player.level}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 2);
+    ctx.fillText(`Lv ${player.level}  —  ${player.xp} / ${player.xpToNext} XP`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 4);
 
-    // Kill count + timer
+    // Kill count (top right)
     ctx.fillStyle = '#aaa';
     ctx.font = '14px monospace';
     ctx.textAlign = 'right';
     ctx.fillText(`Kills: ${player.killCount}`, CANVAS_WIDTH - 10, 24);
+
+    // Weapon inventory (top left, below HP bar)
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    let wy = 38;
+    for (const weapon of player.weapons) {
+        const levelPips = '■'.repeat(weapon.level) + '□'.repeat(8 - weapon.level);
+        ctx.fillStyle = '#888';
+        ctx.fillText(`${weapon.id}`, 12, wy);
+        ctx.fillStyle = weapon.level >= 8 ? '#FFD700' : '#44FF88';
+        ctx.fillText(levelPips, 100, wy);
+        wy += 14;
+    }
+
+    // Passive inventory (below weapons)
+    if (player.passives.length > 0) {
+        wy += 4;
+        for (const passive of player.passives) {
+            ctx.fillStyle = '#777';
+            ctx.fillText(`${passive.id}`, 12, wy);
+            ctx.fillStyle = '#88AAFF';
+            ctx.fillText('■'.repeat(passive.level) + '□'.repeat(5 - passive.level), 100, wy);
+            wy += 14;
+        }
+    }
 
     ctx.textAlign = 'left';
 }
