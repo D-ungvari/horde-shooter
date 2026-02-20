@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horde Shooter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+
+        <div id="menu-screen" class="overlay">
+            <div class="menu-content">
+                <h1>Horde Shooter</h1>
+                <p class="subtitle">Survive the onslaught</p>
+                <button id="start-btn" class="btn-primary" onclick="window.__startGame()">Play</button>
+                <div class="controls-info">
+                    <p>WASD / Arrows &mdash; Move</p>
+                    <p>Mouse &mdash; Aim &amp; Shoot</p>
+                    <p>ESC &mdash; Pause</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="pause-screen" class="overlay" style="display:none">
+            <h1>Paused</h1>
+            <p class="prompt">Press ESC to Resume</p>
+        </div>
+
+        <div id="levelup-screen" class="overlay levelup" style="display:none">
+            <h2>Level Up!</h2>
+            <div id="levelup-choices" class="choices-row">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <div id="gameover-screen" class="overlay gameover" style="display:none">
+            <h1>Game Over</h1>
+            <p class="final-score-big">Score: <span id="final-score">0</span></p>
+            <p class="final-stats">
+                Kills: <span id="final-kills">0</span> &nbsp;|&nbsp;
+                Survived: <span id="final-time">0:00</span>
+            </p>
+            <button id="play-again" class="btn-primary" onclick="window.__startGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
