@@ -1,8 +1,14 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
-import { initInput, resetFrameInput, isKeyDown, updateCamera as updateInputCamera } from './input.js';
+import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as updateInputCamera } from './input.js';
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
-import { createPlayer, updatePlayer } from './player.js';
+import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
+import { updateWeapons, resetWeaponCooldowns } from './weapons.js';
+import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
+import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy } from './enemy.js';
+import { resetSpawner, updateSpawner } from './spawner.js';
+import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap, distSq } from './physics.js';
+import { formatTime } from './utils.js';
 
 const STATE = {
     MENU: 'MENU',
@@ -16,10 +22,12 @@ const STATE = {
 let canvas, ctx;
 let state;
 let player, camera;
-let enemies, projectiles, xpGems;
 let lastTime;
 let survivalTime;
 let escapeHeld = false;
+
+// Pool references
+let enemyPool, projectilePool;
 
 export function initGame() {
     canvas = document.getElementById('game-canvas');
@@ -29,12 +37,14 @@ export function initGame() {
 
     camera = createCamera();
 
-    // Pass camera methods to input for screen-to-world conversion
     const cameraAPI = {
         screenToWorld: (sx, sy) => screenToWorld(camera, sx, sy),
     };
     initInput(canvas, cameraAPI);
     initRenderer(ctx);
+
+    enemyPool = getEnemyPool();
+    projectilePool = getProjectilePool();
 
     state = STATE.MENU;
     showMenu();
@@ -44,25 +54,37 @@ export function initGame() {
 
 function startPlaying() {
     player = createPlayer(0, 0);
-    // Give starting weapon: pistol
     player.weapons.push({ id: 'pistol', level: 1 });
 
     camera.x = player.x;
     camera.y = player.y;
-    enemies = [];
-    projectiles = [];
-    xpGems = [];
     survivalTime = 0;
+
+    clearEnemies();
+    clearProjectiles();
+    resetWeaponCooldowns();
+    resetSpawner();
+
     state = STATE.PLAYING;
-    hideMenu();
+    hideAllOverlays();
 }
 
 function showMenu() {
     document.getElementById('menu-screen').style.display = 'flex';
 }
 
-function hideMenu() {
+function hideAllOverlays() {
     document.getElementById('menu-screen').style.display = 'none';
+    document.getElementById('pause-screen').style.display = 'none';
+    document.getElementById('gameover-screen').style.display = 'none';
+    document.getElementById('levelup-screen').style.display = 'none';
+}
+
+function showGameOver() {
+    document.getElementById('gameover-screen').style.display = 'flex';
+    document.getElementById('final-score').textContent = player.killCount * 100;
+    document.getElementById('final-kills').textContent = player.killCount;
+    document.getElementById('final-time').textContent = formatTime(survivalTime);
 }
 
 function loop(timestamp) {
@@ -70,13 +92,11 @@ function loop(timestamp) {
     lastTime = timestamp;
 
     if (state === STATE.MENU) {
-        // Draw a static background for the menu
         ctx.fillStyle = '#0a0a15';
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
 
     if (state === STATE.PLAYING) {
-        // Pause check
         if (isKeyDown('escape') && !escapeHeld) {
             escapeHeld = true;
             state = STATE.PAUSED;
@@ -97,12 +117,9 @@ function loop(timestamp) {
             lastTime = performance.now();
         }
         if (!isKeyDown('escape')) escapeHeld = false;
-        // Still render the paused frame
-        render(dt);
-    } else if (state === STATE.DYING) {
-        // TODO: death animation
+        render(0);
     } else if (state === STATE.GAME_OVER) {
-        // TODO: game over screen
+        render(0);
     }
 
     resetFrameInput();
@@ -110,41 +127,112 @@ function loop(timestamp) {
 }
 
 function update(dt) {
+    // Player movement
     updatePlayer(player, dt);
 
-    // Update camera to follow player
+    // Camera follow
     updateCamera(camera, player, dt);
-
-    // Update input camera reference for mouse world conversion
     const cameraAPI = {
         screenToWorld: (sx, sy) => screenToWorld(camera, sx, sy),
     };
     updateInputCamera(cameraAPI);
 
-    // TODO: weapon firing, projectiles, enemies, spawner, XP, collisions
+    // Weapons fire
+    const mouse = getMouse();
+    if (mouse.down || mouse.clicked) {
+        updateWeapons(player, dt);
+    } else {
+        // Still tick cooldowns even when not firing
+        updateWeapons(player, dt);
+    }
+
+    // Move projectiles
+    updateProjectiles(dt);
+
+    // Enemy spawning + AI
+    updateSpawner(player, dt);
+    updateEnemies(player, dt);
+
+    // --- Spatial hash collision phase ---
+    clearSpatialHash();
+
+    // Insert enemies into hash
+    enemyPool.forEach(e => {
+        insertIntoHash(e);
+    });
+
+    // Projectile vs Enemy collisions
+    projectilePool.forEach(p => {
+        const nearby = queryHash(p.x, p.y, p.radius + 30);
+        for (const e of nearby) {
+            if (!e.active) continue;
+            if (p.hitSet.has(e._poolIndex)) continue;
+            if (circlesOverlap(p, e)) {
+                // Hit!
+                e.health -= p.damage;
+                p.hitSet.add(e._poolIndex);
+
+                if (e.health <= 0) {
+                    player.killCount++;
+                    // TODO: spawn XP gems, particles, sound
+                    releaseEnemy(e);
+                }
+
+                // Pierce check
+                if (p.pierce <= 0) {
+                    projectilePool.release(p);
+                    break;
+                }
+                p.pierce--;
+            }
+        }
+    });
+
+    // Enemy vs Player collisions
+    const nearPlayer = queryHash(player.x, player.y, player.radius + 30);
+    for (const e of nearPlayer) {
+        if (!e.active) continue;
+        if (circlesOverlap(player, e)) {
+            damagePlayer(player, e.damage);
+        }
+    }
+
+    // Despawn far enemies
+    enemyPool.forEach(e => {
+        const dx = e.x - player.x;
+        const dy = e.y - player.y;
+        if (dx * dx + dy * dy > 2000 * 2000) {
+            releaseEnemy(e);
+        }
+    });
+
+    // Death check
+    if (player.health <= 0) {
+        state = STATE.GAME_OVER;
+        showGameOver();
+    }
 }
 
 function render(dt) {
-    renderGame(camera, player, enemies, projectiles, xpGems, dt, state);
+    // Pass pool arrays for rendering
+    renderGame(camera, player,
+        enemyPool.getAll(),
+        projectilePool.getAll(),
+        null, // xpGems - TODO
+        dt, state);
 
-    // Crosshair (screen space)
+    // Crosshair
     drawCrosshair(ctx);
 
-    // Survival timer (screen space)
-    if (survivalTime !== undefined) {
-        const m = Math.floor(survivalTime / 60);
-        const s = Math.floor(survivalTime % 60);
+    // Timer
+    if (survivalTime !== undefined && state !== STATE.MENU) {
         ctx.fillStyle = '#aaa';
         ctx.font = '16px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`${m}:${s.toString().padStart(2, '0')}`, CANVAS_WIDTH / 2, 24);
+        ctx.fillText(formatTime(survivalTime), CANVAS_WIDTH / 2, 24);
         ctx.textAlign = 'left';
     }
 }
 
-// --- Public functions for menu/UI wiring ---
-
 export function getState() { return state; }
-
-// Called from UI
 window.__startGame = startPlaying;
