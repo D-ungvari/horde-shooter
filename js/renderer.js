@@ -1,7 +1,8 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT, COLOR_PLAYER, COLOR_PLAYER_DARK, COLOR_BULLET } from './constants.js';
 import { applyCamera, isInView } from './camera.js';
 import { getMouse } from './input.js';
-import { drawBackground } from './background.js';
+import { drawBackground, drawAmbientParticles } from './background.js';
+import { BIOMES } from './biomes.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
 import { v2FromAngle } from './utils.js';
 import { renderEffects, renderScreenEffects, getShakeOffset } from './effects.js';
@@ -13,11 +14,12 @@ export function initRenderer(context) {
     ctx = context;
 }
 
-export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state, orbitals) {
+export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state, orbitals, biomeId) {
     gameTime += dt || 1 / 60;
 
-    // Clear
-    ctx.fillStyle = '#0a0a15';
+    // Clear with biome bg color
+    const biomeDef = BIOMES[biomeId] || BIOMES.graveyard;
+    ctx.fillStyle = biomeDef.bgColor;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // --- World space rendering ---
@@ -27,7 +29,10 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
     applyCamera(ctx, camera);
 
     // Background tiles
-    drawBackground(ctx, camera);
+    drawBackground(ctx, camera, biomeId);
+
+    // Ambient particles (mist, embers, sparks)
+    drawAmbientParticles(ctx, biomeId);
 
     // Zone projectiles (draw under everything)
     if (projectiles) {

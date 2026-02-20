@@ -14,6 +14,20 @@
             <div class="menu-content">
                 <h1>Horde Shooter</h1>
                 <p class="subtitle">Survive the onslaught</p>
+                <div class="biome-selector">
+                    <div class="biome-btn selected" data-biome="graveyard" onclick="window.__selectBiome('graveyard')">
+                        <div class="biome-icon">🪦</div>
+                        <div class="biome-name">Graveyard</div>
+                    </div>
+                    <div class="biome-btn" data-biome="volcano" onclick="window.__selectBiome('volcano')">
+                        <div class="biome-icon">🌋</div>
+                        <div class="biome-name">Volcano</div>
+                    </div>
+                    <div class="biome-btn" data-biome="void" onclick="window.__selectBiome('void')">
+                        <div class="biome-icon">🌀</div>
+                        <div class="biome-name">The Void</div>
+                    </div>
+                </div>
                 <button id="start-btn" class="btn-primary" onclick="window.__startGame()">Play</button>
                 <div class="controls-info">
                     <p>WASD / Arrows &mdash; Move</p>

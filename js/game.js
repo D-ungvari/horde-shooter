@@ -19,6 +19,8 @@ import { updateEffects, resetEffects,
 import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
+import { updateAmbient } from './background.js';
+import { BIOMES, BIOME_LIST } from './biomes.js';
 
 const STATE = {
     MENU: 'MENU',
@@ -36,6 +38,7 @@ let lastTime;
 let survivalTime;
 let escapeHeld = false;
 let pendingLevelUps = 0;
+let currentBiome = 'graveyard';
 
 // Announcements
 let activeAnnouncement = null;
@@ -115,7 +118,8 @@ function loop(timestamp) {
     lastTime = timestamp;
 
     if (state === STATE.MENU) {
-        ctx.fillStyle = '#0a0a15';
+        const biomeDef = BIOMES[currentBiome] || BIOMES.graveyard;
+        ctx.fillStyle = biomeDef.bgColor;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
 
@@ -184,6 +188,9 @@ function update(dt) {
 
     // Move projectiles (pass player for boomerang return)
     updateProjectiles(dt, player);
+
+    // Ambient biome particles
+    updateAmbient(camera, currentBiome, dt);
 
     // Enemy spawning + AI
     updateSpawner(player, dt);
@@ -347,7 +354,7 @@ function render(dt) {
         enemyPool.getAll(),
         projectilePool.getAll(),
         xpPool.getAll(),
-        dt, state, orbitals);
+        dt, state, orbitals, currentBiome);
 
     // Crosshair
     if (state === STATE.PLAYING || state === STATE.PAUSED) {
@@ -406,3 +413,12 @@ function render(dt) {
 
 export function getState() { return state; }
 window.__startGame = startPlaying;
+window.__selectBiome = (biomeId) => {
+    if (BIOMES[biomeId]) {
+        currentBiome = biomeId;
+        // Update visual selection in menu
+        document.querySelectorAll('.biome-btn').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.biome === biomeId);
+        });
+    }
+};

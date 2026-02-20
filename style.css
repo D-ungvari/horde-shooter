@@ -79,6 +79,50 @@ canvas {
     line-height: 1.8;
 }
 
+/* --- Biome Selector --- */
+
+.biome-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.biome-btn {
+    width: 100px;
+    padding: 12px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 2px solid #333;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.biome-btn:hover {
+    border-color: #666;
+    background: rgba(255,255,255,0.06);
+}
+
+.biome-btn.selected {
+    border-color: #4488EE;
+    background: rgba(68, 136, 238, 0.1);
+    box-shadow: 0 0 12px rgba(68, 136, 238, 0.2);
+}
+
+.biome-icon {
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.biome-name {
+    font-size: 11px;
+    color: #aaa;
+    letter-spacing: 1px;
+}
+
+.biome-btn.selected .biome-name {
+    color: #4488EE;
+}
+
 /* --- Buttons --- */
 
 .btn-primary {
