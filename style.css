@@ -387,3 +387,58 @@ canvas {
     margin-bottom: 8px;
     color: #aaa;
 }
+
+/* --- Continue Button --- */
+
+#continue-btn {
+    background: #228B22;
+    border-color: #44CC44;
+}
+
+#continue-btn:hover {
+    background: #33AA33;
+    box-shadow: 0 0 20px rgba(34, 139, 34, 0.4);
+}
+
+/* --- Game Over Animation --- */
+
+@keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.overlay.gameover h1 {
+    animation: fadeSlideUp 0.5s ease-out both;
+    color: #FF4444;
+    text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+}
+
+.overlay.gameover .final-score-big {
+    animation: fadeSlideUp 0.5s ease-out both;
+    animation-delay: 0.15s;
+}
+
+.overlay.gameover .final-stats {
+    animation: fadeSlideUp 0.5s ease-out both;
+    animation-delay: 0.25s;
+}
+
+.overlay.gameover .gold-earned {
+    animation: fadeSlideUp 0.5s ease-out both;
+    animation-delay: 0.35s;
+}
+
+.overlay.gameover .menu-buttons {
+    animation: fadeSlideUp 0.5s ease-out both;
+    animation-delay: 0.5s;
+}
+
+/* --- Pause screen --- */
+
+.overlay#pause-screen {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.overlay#pause-screen h1 {
+    text-shadow: 0 0 20px rgba(68, 136, 238, 0.4);
+}

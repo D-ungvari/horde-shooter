@@ -23,6 +23,7 @@ import { updateAmbient } from './background.js';
 import { BIOMES, BIOME_LIST } from './biomes.js';
 import { loadMeta, getGold, awardEndOfRun, isBiomeUnlocked,
     META_UPGRADES, getUpgradeLevel, getUpgradeCost, purchaseUpgrade } from './meta.js';
+import { saveRun, loadRun, clearRunSave, hasSavedRun } from './save.js';
 
 const STATE = {
     MENU: 'MENU',
@@ -77,6 +78,7 @@ export function initGame() {
 }
 
 function startPlaying() {
+    clearRunSave(); // Clear any saved run when starting fresh
     player = createPlayer(0, 0);
     player.weapons.push({ id: 'pistol', level: 1 });
 
@@ -97,8 +99,49 @@ function startPlaying() {
     hideAllOverlays();
 }
 
+function resumeRun() {
+    const saved = loadRun();
+    if (!saved) return startPlaying(); // fallback
+
+    clearRunSave();
+
+    player = createPlayer(saved.player.x, saved.player.y);
+    player.health = saved.player.health;
+    player.maxHealth = saved.player.maxHealth;
+    player.level = saved.player.level;
+    player.xp = saved.player.xp;
+    player.xpToNext = saved.player.xpToNext;
+    player.killCount = saved.player.killCount;
+    player.weapons = saved.player.weapons.map(w => ({ id: w.id, level: w.level }));
+    player.passives = saved.player.passives.map(p => ({ id: p.id, level: p.level }));
+
+    currentBiome = saved.biome || 'graveyard';
+    survivalTime = saved.survivalTime || 0;
+    pendingLevelUps = 0;
+
+    camera.x = player.x;
+    camera.y = player.y;
+
+    clearEnemies();
+    clearProjectiles();
+    clearXPGems();
+    resetWeaponCooldowns();
+    resetSpawner();
+    resetEffects();
+    recalculateStats(player);
+
+    state = STATE.PLAYING;
+    hideAllOverlays();
+}
+
 function showMenu() {
     document.getElementById('menu-screen').style.display = 'flex';
+
+    // Show/hide Continue button based on save existence
+    const continueBtn = document.getElementById('continue-btn');
+    if (continueBtn) {
+        continueBtn.style.display = hasSavedRun() ? 'inline-block' : 'none';
+    }
 }
 
 function hideAllOverlays() {
@@ -112,6 +155,7 @@ function hideAllOverlays() {
 }
 
 function showGameOver() {
+    clearRunSave(); // Clear save on death
     // Award gold and check biome unlocks
     const result = awardEndOfRun(player.killCount, survivalTime, player.level, currentBiome);
 
@@ -151,6 +195,8 @@ function loop(timestamp) {
             escapeHeld = true;
             state = STATE.PAUSED;
             document.getElementById('pause-screen').style.display = 'flex';
+            // Auto-save on pause
+            saveRun({ player, survivalTime, biome: currentBiome });
         }
         if (!isKeyDown('escape')) escapeHeld = false;
 
@@ -509,6 +555,12 @@ function returnToMenu() {
     showMenu();
 }
 
+function quitToMenu() {
+    // Save current run before quitting
+    saveRun({ player, survivalTime, biome: currentBiome });
+    returnToMenu();
+}
+
 export function getState() { return state; }
 window.__startGame = () => {
     updateBiomeLocks();
@@ -525,3 +577,5 @@ window.__selectBiome = (biomeId) => {
 window.__showShop = showShop;
 window.__hideShop = hideShop;
 window.__returnToMenu = returnToMenu;
+window.__quitToMenu = quitToMenu;
+window.__continueRun = () => resumeRun();
