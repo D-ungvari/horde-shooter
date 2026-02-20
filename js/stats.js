@@ -1,11 +1,12 @@
-// Stat calculator: recalculates player stats from base + passives (+ meta bonuses later)
+// Stat calculator: recalculates player stats from base + passives + meta bonuses
 import {
     PLAYER_SPEED, PLAYER_COLLECT_RADIUS, PLAYER_MAGNET_RADIUS, PLAYER_MAX_HEALTH,
     XP_BASE, XP_EXPONENT
 } from './constants.js';
 import { PASSIVES } from './passiveData.js';
+import { getMetaBonuses } from './meta.js';
 
-// Recalculate all derived stats based on current passives
+// Recalculate all derived stats based on current passives + meta upgrades
 export function recalculateStats(player) {
     // Start from base values
     let damageBonus = 0;
@@ -36,17 +37,22 @@ export function recalculateStats(player) {
         if (pL.magnetRadiusMultiplier)  magnetBonus += pL.magnetRadiusMultiplier * lvl;
     }
 
-    // Apply to player stats
-    player.damageMultiplier = 1 + damageBonus;
+    // Get permanent meta bonuses
+    const meta = getMetaBonuses();
+
+    // Apply to player stats (passives + meta multiplied together)
+    player.damageMultiplier = (1 + damageBonus) * meta.damageMult;
     player.attackSpeedMultiplier = 1 + attackSpeedBonus;
-    player.cooldownReduction = Math.min(cooldownReduction, 0.5); // cap at 50%
+    player.cooldownReduction = Math.min(cooldownReduction, 0.5);
     player.areaMultiplier = 1 + areaBonus;
     player.piercingBonus = piercingBonus;
     player.durationMultiplier = 1 + durationBonus;
-    player.armorMultiplier = Math.max(1 - armorReduction, 0.2); // cap at 80% reduction
-    player.speed = PLAYER_SPEED * (1 + speedBonus);
-    player.magnetRadius = PLAYER_MAGNET_RADIUS * (1 + magnetBonus);
-    player.collectRadius = PLAYER_COLLECT_RADIUS * (1 + magnetBonus * 0.5);
+    player.armorMultiplier = Math.max((1 - armorReduction) * meta.armorMult, 0.2);
+    player.speed = PLAYER_SPEED * (1 + speedBonus) * meta.speedMult;
+    player.magnetRadius = PLAYER_MAGNET_RADIUS * (1 + magnetBonus) * meta.pickupRangeMult;
+    player.collectRadius = PLAYER_COLLECT_RADIUS * (1 + magnetBonus * 0.5) * meta.pickupRangeMult;
+    player.maxHealth = Math.floor(PLAYER_MAX_HEALTH * meta.maxHealthMult);
+    player.xpMultiplier = meta.xpMult;
 }
 
 // XP needed for a given level: floor(XP_BASE * level^XP_EXPONENT)

@@ -123,6 +123,113 @@ canvas {
     color: #4488EE;
 }
 
+.biome-btn.locked {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.biome-btn.locked .biome-name::after {
+    content: ' \1F512';
+    font-size: 9px;
+}
+
+/* --- Gold & Meta --- */
+
+.gold-display {
+    font-size: 16px;
+    color: #FFD700;
+    margin-bottom: 12px;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+}
+
+.gold-earned {
+    font-size: 22px;
+    font-weight: bold;
+    color: #FFD700;
+    margin-bottom: 4px;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+}
+
+.unlock-msg {
+    font-size: 18px;
+    font-weight: bold;
+    color: #44FF88;
+    margin-bottom: 12px;
+    text-shadow: 0 0 12px rgba(68, 255, 136, 0.4);
+    animation: cardSlideIn 0.5s ease-out;
+}
+
+.menu-buttons {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+/* --- Shop --- */
+
+.overlay.shop {
+    background: rgba(0, 0, 0, 0.92);
+}
+
+.shop-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 150px);
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.shop-item {
+    padding: 14px 10px;
+    background: #1a1a2e;
+    border: 2px solid #333;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.shop-item:hover {
+    border-color: #FFD700;
+    background: #1e1e28;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 12px rgba(255, 215, 0, 0.2);
+}
+
+.shop-item.maxed {
+    opacity: 0.5;
+    pointer-events: none;
+    border-color: #444;
+}
+
+.shop-icon {
+    font-size: 28px;
+    margin-bottom: 4px;
+}
+
+.shop-name {
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.shop-desc {
+    font-size: 10px;
+    color: #888;
+    margin-bottom: 6px;
+}
+
+.shop-pips {
+    font-size: 12px;
+    color: #FFD700;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+}
+
+.shop-cost {
+    font-size: 12px;
+    color: #FFD700;
+    font-weight: bold;
+}
+
 /* --- Buttons --- */
 
 .btn-primary {
@@ -142,6 +249,25 @@ canvas {
     background: #5599FF;
     transform: scale(1.05);
     box-shadow: 0 0 20px rgba(68, 136, 238, 0.4);
+}
+
+.btn-secondary {
+    padding: 10px 32px;
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: bold;
+    background: transparent;
+    color: #FFD700;
+    border: 2px solid #FFD700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 215, 0, 0.1);
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
 }
 
 /* --- Level Up Screen --- */

@@ -14,27 +14,40 @@
             <div class="menu-content">
                 <h1>Horde Shooter</h1>
                 <p class="subtitle">Survive the onslaught</p>
+                <p class="gold-display">Gold: <span id="menu-gold">0</span></p>
                 <div class="biome-selector">
                     <div class="biome-btn selected" data-biome="graveyard" onclick="window.__selectBiome('graveyard')">
-                        <div class="biome-icon">🪦</div>
+                        <div class="biome-icon">&#x1FAA6;</div>
                         <div class="biome-name">Graveyard</div>
                     </div>
                     <div class="biome-btn" data-biome="volcano" onclick="window.__selectBiome('volcano')">
-                        <div class="biome-icon">🌋</div>
+                        <div class="biome-icon">&#x1F30B;</div>
                         <div class="biome-name">Volcano</div>
                     </div>
                     <div class="biome-btn" data-biome="void" onclick="window.__selectBiome('void')">
-                        <div class="biome-icon">🌀</div>
+                        <div class="biome-icon">&#x1F300;</div>
                         <div class="biome-name">The Void</div>
                     </div>
                 </div>
-                <button id="start-btn" class="btn-primary" onclick="window.__startGame()">Play</button>
+                <div class="menu-buttons">
+                    <button id="start-btn" class="btn-primary" onclick="window.__startGame()">Play</button>
+                    <button id="shop-btn" class="btn-secondary" onclick="window.__showShop()">Upgrades</button>
+                </div>
                 <div class="controls-info">
                     <p>WASD / Arrows &mdash; Move</p>
                     <p>Mouse &mdash; Aim &amp; Shoot</p>
                     <p>ESC &mdash; Pause</p>
                 </div>
             </div>
+        </div>
+
+        <div id="shop-screen" class="overlay shop" style="display:none">
+            <h2>Permanent Upgrades</h2>
+            <p class="gold-display">Gold: <span id="menu-gold-shop">0</span></p>
+            <div id="shop-items" class="shop-grid">
+                <!-- Dynamically populated -->
+            </div>
+            <button class="btn-secondary" onclick="window.__hideShop()">Back</button>
         </div>
 
         <div id="pause-screen" class="overlay" style="display:none">
@@ -57,7 +70,12 @@
                 Level: <span id="final-level">1</span> &nbsp;|&nbsp;
                 Survived: <span id="final-time">0:00</span>
             </p>
-            <button id="play-again" class="btn-primary" onclick="window.__startGame()">Play Again</button>
+            <p class="gold-earned" id="final-gold">+0</p>
+            <p class="unlock-msg" id="unlock-msg" style="display:none"></p>
+            <div class="menu-buttons">
+                <button id="play-again" class="btn-primary" onclick="window.__startGame()">Play Again</button>
+                <button class="btn-secondary" onclick="window.__returnToMenu()">Menu</button>
+            </div>
         </div>
     </div>
 

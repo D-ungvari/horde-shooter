@@ -21,6 +21,8 @@ import { playEnemyHit, playEnemyDeath, playBossDeath,
     playBossWarning, playExplosion } from './audio.js';
 import { updateAmbient } from './background.js';
 import { BIOMES, BIOME_LIST } from './biomes.js';
+import { loadMeta, getGold, awardEndOfRun, isBiomeUnlocked,
+    META_UPGRADES, getUpgradeLevel, getUpgradeCost, purchaseUpgrade } from './meta.js';
 
 const STATE = {
     MENU: 'MENU',
@@ -65,8 +67,11 @@ export function initGame() {
     projectilePool = getProjectilePool();
     xpPool = getXPPool();
 
+    loadMeta();
     state = STATE.MENU;
     showMenu();
+    updateMenuGold();
+    updateBiomeLocks();
     lastTime = performance.now();
     requestAnimationFrame(loop);
 }
@@ -101,9 +106,15 @@ function hideAllOverlays() {
     document.getElementById('pause-screen').style.display = 'none';
     document.getElementById('gameover-screen').style.display = 'none';
     document.getElementById('levelup-screen').style.display = 'none';
+    document.getElementById('shop-screen').style.display = 'none';
+    const unlockEl = document.getElementById('unlock-msg');
+    if (unlockEl) unlockEl.style.display = 'none';
 }
 
 function showGameOver() {
+    // Award gold and check biome unlocks
+    const result = awardEndOfRun(player.killCount, survivalTime, player.level, currentBiome);
+
     document.getElementById('gameover-screen').style.display = 'flex';
     document.getElementById('final-score').textContent = player.killCount * 100 + (player.level - 1) * 50;
     document.getElementById('final-kills').textContent = player.killCount;
@@ -111,6 +122,18 @@ function showGameOver() {
 
     const levelEl = document.getElementById('final-level');
     if (levelEl) levelEl.textContent = player.level;
+
+    const goldEl = document.getElementById('final-gold');
+    if (goldEl) goldEl.textContent = `+${result.goldEarned}`;
+
+    if (result.newUnlock) {
+        const unlockEl = document.getElementById('unlock-msg');
+        if (unlockEl) {
+            const biomeName = BIOMES[result.newUnlock]?.name || result.newUnlock;
+            unlockEl.textContent = `NEW BIOME UNLOCKED: ${biomeName}!`;
+            unlockEl.style.display = 'block';
+        }
+    }
 }
 
 function loop(timestamp) {
@@ -411,14 +434,94 @@ function render(dt) {
     }
 }
 
+function updateMenuGold() {
+    const gold = getGold();
+    const el = document.getElementById('menu-gold');
+    if (el) el.textContent = gold;
+    const el2 = document.getElementById('menu-gold-shop');
+    if (el2) el2.textContent = gold;
+}
+
+function updateBiomeLocks() {
+    document.querySelectorAll('.biome-btn').forEach(btn => {
+        const biomeId = btn.dataset.biome;
+        const locked = !isBiomeUnlocked(biomeId);
+        btn.classList.toggle('locked', locked);
+        if (locked) {
+            btn.classList.remove('selected');
+        }
+    });
+}
+
+function buildShop() {
+    const container = document.getElementById('shop-items');
+    if (!container) return;
+    container.innerHTML = '';
+
+    for (const [id, def] of Object.entries(META_UPGRADES)) {
+        const level = getUpgradeLevel(id);
+        const cost = getUpgradeCost(id);
+        const maxed = level >= def.maxLevel;
+
+        const item = document.createElement('div');
+        item.className = 'shop-item' + (maxed ? ' maxed' : '');
+
+        const pips = '\u25A0'.repeat(level) + '\u25A1'.repeat(def.maxLevel - level);
+
+        item.innerHTML = `
+            <div class="shop-icon">${def.icon}</div>
+            <div class="shop-name">${def.name}</div>
+            <div class="shop-desc">${def.desc}</div>
+            <div class="shop-pips">${pips}</div>
+            <div class="shop-cost">${maxed ? 'MAX' : cost + ' gold'}</div>
+        `;
+
+        if (!maxed) {
+            item.addEventListener('click', () => {
+                if (purchaseUpgrade(id)) {
+                    buildShop();
+                    updateMenuGold();
+                }
+            });
+        }
+
+        container.appendChild(item);
+    }
+}
+
+function showShop() {
+    buildShop();
+    updateMenuGold();
+    document.getElementById('menu-screen').style.display = 'none';
+    document.getElementById('shop-screen').style.display = 'flex';
+}
+
+function hideShop() {
+    document.getElementById('shop-screen').style.display = 'none';
+    document.getElementById('menu-screen').style.display = 'flex';
+}
+
+function returnToMenu() {
+    hideAllOverlays();
+    state = STATE.MENU;
+    updateMenuGold();
+    updateBiomeLocks();
+    showMenu();
+}
+
 export function getState() { return state; }
-window.__startGame = startPlaying;
+window.__startGame = () => {
+    updateBiomeLocks();
+    startPlaying();
+};
 window.__selectBiome = (biomeId) => {
-    if (BIOMES[biomeId]) {
+    if (BIOMES[biomeId] && isBiomeUnlocked(biomeId)) {
         currentBiome = biomeId;
-        // Update visual selection in menu
         document.querySelectorAll('.biome-btn').forEach(btn => {
             btn.classList.toggle('selected', btn.dataset.biome === biomeId);
         });
     }
 };
+window.__showShop = showShop;
+window.__hideShop = hideShop;
+window.__returnToMenu = returnToMenu;
