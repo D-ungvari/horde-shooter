@@ -2,6 +2,7 @@
 import { WEAPONS, EVOLUTIONS } from './weaponData.js';
 import { PASSIVES } from './passiveData.js';
 import { recalculateStats } from './stats.js';
+import { playPickupChoice } from './audio.js';
 
 const MAX_WEAPONS = 6;
 const MAX_CHOICES = 3;
@@ -223,6 +224,7 @@ export function showLevelUpScreen(player) {
 }
 
 function pickChoice(player, choice) {
+    playPickupChoice();
     const screen = document.getElementById('levelup-screen');
 
     // Remove key handler

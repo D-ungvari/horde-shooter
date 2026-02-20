@@ -3,6 +3,23 @@ import { spawnProjectile } from './projectile.js';
 import { getMouseWorld } from './input.js';
 import { getEnemyPool } from './enemy.js';
 import { v2Normalize, v2FromAngle, v2Dist, v2Sub, angleBetween, randomRange } from './utils.js';
+import { playShoot, playShotgun, playSmg, playRocket, playLightning, playFlame, playFrostNova } from './audio.js';
+
+// Weapon sound dispatch
+function playWeaponSound(weaponId) {
+    switch (weaponId) {
+        case 'pistol': playShoot(); break;
+        case 'shotgun': playShotgun(); break;
+        case 'smg': playSmg(); break;
+        case 'rocket': case 'mirv': playRocket(); break;
+        case 'lightning': case 'thunderstorm': playLightning(); break;
+        case 'flamethrower': case 'inferno': playFlame(); break;
+        case 'frost_nova': case 'absolute_zero': playFrostNova(); break;
+        case 'railgun': playShoot(); break;
+        case 'flak_cannon': playShotgun(); break;
+        case 'minigun': playSmg(); break;
+    }
+}
 
 // Cooldown timers per weapon slot
 const cooldowns = [];
@@ -43,6 +60,7 @@ export function updateWeapons(player, dt) {
             const canFire = fireWeapon(player, stats, mouseWorld, dt);
             if (canFire) {
                 cooldowns[i] = effectiveCooldown;
+                playWeaponSound(weapon.id);
             }
         }
     }

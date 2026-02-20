@@ -4,6 +4,7 @@ import { getMouse } from './input.js';
 import { drawBackground } from './background.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
 import { v2FromAngle } from './utils.js';
+import { renderEffects, renderScreenEffects, getShakeOffset } from './effects.js';
 
 let ctx;
 let gameTime = 0;
@@ -20,7 +21,9 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // --- World space rendering ---
+    const shake = getShakeOffset();
     ctx.save();
+    ctx.translate(shake.x, shake.y);
     applyCamera(ctx, camera);
 
     // Background tiles
@@ -79,8 +82,14 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         }
     }
 
+    // Particles & damage numbers (world space)
+    renderEffects(ctx, camera);
+
     ctx.restore();
     // --- End world space ---
+
+    // Screen flash overlay
+    renderScreenEffects(ctx);
 
     // --- Screen space HUD ---
     drawHUD(player, state);

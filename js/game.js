@@ -12,6 +12,13 @@ import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
 import { grantXP, recalculateStats } from './stats.js';
 import { showLevelUpScreen, hideLevelUpScreen } from './levelUp.js';
 import { formatTime } from './utils.js';
+import { updateEffects, resetEffects,
+    spawnKillParticles, spawnBossDeathParticles, spawnHitParticles,
+    spawnXPPickupFlash, spawnDamageNumber,
+    triggerShake, triggerFlash } from './effects.js';
+import { playEnemyHit, playEnemyDeath, playBossDeath,
+    playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
+    playBossWarning, playExplosion } from './audio.js';
 
 const STATE = {
     MENU: 'MENU',
@@ -75,6 +82,7 @@ function startPlaying() {
     clearXPGems();
     resetWeaponCooldowns();
     resetSpawner();
+    resetEffects();
     recalculateStats(player);
 
     state = STATE.PLAYING;
@@ -149,6 +157,7 @@ function loop(timestamp) {
 
 async function triggerLevelUp() {
     state = STATE.LEVEL_UP;
+    playLevelUp();
 
     while (pendingLevelUps > 0) {
         pendingLevelUps--;
@@ -185,6 +194,9 @@ function update(dt) {
     if (newAnnouncements.length > 0) {
         activeAnnouncement = newAnnouncements[newAnnouncements.length - 1].text;
         announcementTimer = 2.5;
+        if (activeAnnouncement.includes('BOSS') || activeAnnouncement.includes('FINAL')) {
+            playBossWarning();
+        }
     }
     if (announcementTimer > 0) {
         announcementTimer -= dt;
@@ -196,11 +208,16 @@ function update(dt) {
     // XP gem magnet + collection
     const collectedXP = updateXPGems(player, dt);
     if (collectedXP > 0) {
+        playXPPickup();
+        spawnXPPickupFlash(player.x, player.y);
         const levelUps = grantXP(player, collectedXP);
         if (levelUps > 0) {
             pendingLevelUps += levelUps;
         }
     }
+
+    // Update effects (particles, damage numbers, screen shake)
+    updateEffects(dt);
 
     // --- Spatial hash collision phase ---
     clearSpatialHash();
@@ -226,11 +243,28 @@ function update(dt) {
                 e.health -= p.damage;
                 p.hitSet.add(e._poolIndex);
 
+                // Hit effects
+                spawnHitParticles(e.x, e.y, e.color);
+                spawnDamageNumber(e.x, e.y, Math.round(p.damage));
+
                 if (e.health <= 0) {
                     player.killCount++;
 
+                    // Death effects + audio
+                    if (e.isBoss) {
+                        spawnBossDeathParticles(e.x, e.y, e.color);
+                        playBossDeath();
+                        triggerShake(8, 0.4);
+                        triggerFlash('#FFFFFF', 0.3, 2);
+                    } else {
+                        spawnKillParticles(e.x, e.y, e.color);
+                        playEnemyDeath();
+                    }
+
                     // Exploder death AoE
                     if (e.type === 'exploder' && e.explosionRadius > 0) {
+                        playExplosion();
+                        triggerShake(5, 0.2);
                         const explosionDmg = triggerExplosion(e, player);
                         if (explosionDmg > 0) {
                             damagePlayer(player, explosionDmg);
@@ -239,6 +273,8 @@ function update(dt) {
 
                     spawnXPBurst(e.x, e.y, e.xpValue);
                     releaseEnemy(e);
+                } else {
+                    playEnemyHit();
                 }
 
                 // Pierce check
@@ -260,6 +296,10 @@ function update(dt) {
         if (dx * dx + dy * dy < radSum * radSum) {
             const hit = damagePlayer(player, p.damage);
             if (hit) {
+                triggerShake(3, 0.15);
+                triggerFlash('#FF0000', 0.2, 3);
+                playPlayerHit();
+                spawnDamageNumber(player.x, player.y, Math.round(p.damage), '#FF4444', 16);
                 projectilePool.release(p);
             }
         }
@@ -270,7 +310,12 @@ function update(dt) {
     for (const e of nearPlayer) {
         if (!e.active) continue;
         if (circlesOverlap(player, e)) {
-            damagePlayer(player, e.damage);
+            const hit = damagePlayer(player, e.damage);
+            if (hit) {
+                triggerShake(3, 0.15);
+                triggerFlash('#FF0000', 0.15, 3);
+                playPlayerHit();
+            }
         }
     }
 
@@ -286,6 +331,9 @@ function update(dt) {
 
     // Death check
     if (player.health <= 0) {
+        triggerShake(10, 0.5);
+        triggerFlash('#FF0000', 0.5, 1.5);
+        playPlayerDeath();
         state = STATE.GAME_OVER;
         showGameOver();
     }
