@@ -196,6 +196,13 @@ function drawEnemyEntity(e) {
         }
     }
 
+    // Boss glow — pulsing, large
+    if (e.isBoss) {
+        const bossPulse = 0.25 + Math.sin(gameTime * 3) * 0.1;
+        drawGlow(ctx, e.x, e.y, e.radius * 3, '#FF2200', bossPulse);
+        drawGlow(ctx, e.x, e.y, e.radius * 2, e.color, 0.3);
+    }
+
     // Elite glow
     if (e.isElite) {
         drawGlow(ctx, e.x, e.y, e.radius * 2, '#FFD700', 0.2);

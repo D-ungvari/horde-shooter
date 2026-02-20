@@ -6,7 +6,7 @@ import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
 import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
 import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion } from './enemy.js';
-import { resetSpawner, updateSpawner } from './spawner.js';
+import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
 import { grantXP, recalculateStats } from './stats.js';
@@ -29,6 +29,10 @@ let lastTime;
 let survivalTime;
 let escapeHeld = false;
 let pendingLevelUps = 0;
+
+// Announcements
+let activeAnnouncement = null;
+let announcementTimer = 0;
 
 // Pool references
 let enemyPool, projectilePool, xpPool;
@@ -176,6 +180,19 @@ function update(dt) {
     updateSpawner(player, dt);
     updateEnemies(player, dt);
 
+    // Process announcements
+    const newAnnouncements = getAnnouncements();
+    if (newAnnouncements.length > 0) {
+        activeAnnouncement = newAnnouncements[newAnnouncements.length - 1].text;
+        announcementTimer = 2.5;
+    }
+    if (announcementTimer > 0) {
+        announcementTimer -= dt;
+        if (announcementTimer <= 0) {
+            activeAnnouncement = null;
+        }
+    }
+
     // XP gem magnet + collection
     const collectedXP = updateXPGems(player, dt);
     if (collectedXP > 0) {
@@ -257,8 +274,9 @@ function update(dt) {
         }
     }
 
-    // Despawn far enemies
+    // Despawn far enemies (never despawn bosses)
     enemyPool.forEach(e => {
+        if (e.isBoss) return;
         const dx = e.x - player.x;
         const dy = e.y - player.y;
         if (dx * dx + dy * dy > 2000 * 2000) {
@@ -295,6 +313,46 @@ function render(dt) {
         ctx.textAlign = 'center';
         ctx.fillText(formatTime(survivalTime), CANVAS_WIDTH / 2, 24);
         ctx.textAlign = 'left';
+    }
+
+    // Boss health bar (top center, below timer)
+    if (state === STATE.PLAYING || state === STATE.PAUSED) {
+        enemyPool.forEach(e => {
+            if (!e.isBoss) return;
+            const barW = 300;
+            const barH = 12;
+            const bx = (CANVAS_WIDTH - barW) / 2;
+            const by = 36;
+            // Background
+            ctx.fillStyle = '#222';
+            ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+            // Health
+            const hpRatio = Math.max(0, e.health / e.maxHealth);
+            ctx.fillStyle = '#FF4444';
+            ctx.fillRect(bx, by, barW * hpRatio, barH);
+            // Border
+            ctx.strokeStyle = '#FF6666';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bx - 1, by - 1, barW + 2, barH + 2);
+            // Name
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 11px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(e.type.replace(/_/g, ' ').toUpperCase(), CANVAS_WIDTH / 2, by + barH + 14);
+            ctx.textAlign = 'left';
+        });
+    }
+
+    // Announcement text
+    if (activeAnnouncement && announcementTimer > 0) {
+        const fade = Math.min(announcementTimer / 0.5, 1);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 28px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(activeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+        ctx.textAlign = 'left';
+        ctx.globalAlpha = 1.0;
     }
 }
 
