@@ -32,6 +32,13 @@ export function resetWeaponCooldowns() {
     orbitalAngles.length = 0;
 }
 
+// Expose cooldown state for HUD rendering
+export function getWeaponCooldownRatio(index) {
+    if (cooldowns[index] === undefined || cooldowns[index] <= 0) return 1;
+    return 0; // simplified: 0 = on cooldown, 1 = ready
+}
+export function getCooldowns() { return cooldowns; }
+
 export function updateWeapons(player, dt) {
     const mouseWorld = getMouseWorld();
 

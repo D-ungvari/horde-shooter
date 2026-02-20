@@ -6,6 +6,11 @@ import { BIOMES } from './biomes.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
 import { v2FromAngle } from './utils.js';
 import { renderEffects, renderScreenEffects, getShakeOffset } from './effects.js';
+import { getCooldowns } from './weapons.js';
+import { WEAPONS, EVOLUTIONS, getWeaponStats } from './weaponData.js';
+import { PASSIVES } from './passiveData.js';
+import { drawMinimap } from './minimap.js';
+import { getGold } from './meta.js';
 
 let ctx;
 let gameTime = 0;
@@ -98,6 +103,11 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
 
     // --- Screen space HUD ---
     drawHUD(player, state);
+
+    // Minimap (only during gameplay states)
+    if (state === 'PLAYING' || state === 'PAUSED') {
+        drawMinimap(ctx, player, enemies, xpGems);
+    }
 }
 
 // --- Entity drawing ---
@@ -506,56 +516,131 @@ function drawOrbital(orb) {
 function drawHUD(player, state) {
     if (!player) return;
 
-    // HP bar (top left)
+    const cooldowns = getCooldowns();
+
+    // === HP Bar (top left) ===
     const hpRatio = player.health / player.maxHealth;
     const r = Math.floor(255 * (1 - hpRatio));
     const g = Math.floor(200 * hpRatio);
-    drawBar(ctx, 10, 10, 200, 18, hpRatio, `rgb(${r},${g},50)`);
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`HP: ${Math.ceil(player.health)} / ${player.maxHealth}`, 14, 24);
 
-    // XP bar (bottom, full width)
+    // HP bar background
+    ctx.fillStyle = '#111';
+    ctx.fillRect(9, 9, 162, 14);
+    // HP bar fill
+    ctx.fillStyle = `rgb(${r},${g},50)`;
+    ctx.fillRect(10, 10, 160 * hpRatio, 12);
+    // HP bar border
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(9, 9, 162, 14);
+    // HP text
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`HP: ${Math.ceil(player.health)} / ${player.maxHealth}`, 14, 19);
+
+    // === Weapon slots (top left, below HP) ===
+    let wy = 30;
+    for (let i = 0; i < player.weapons.length; i++) {
+        const weapon = player.weapons[i];
+        const def = WEAPONS[weapon.id] || EVOLUTIONS[weapon.id];
+        const maxLvl = 8;
+        const isMaxed = weapon.level >= maxLvl;
+        const stats = getWeaponStats(weapon.id, weapon.level);
+
+        // Cooldown bar background
+        const barX = 10;
+        const barW = 160;
+        const barH = 10;
+        ctx.fillStyle = '#111';
+        ctx.fillRect(barX, wy, barW, barH);
+
+        // Cooldown fill
+        const cd = cooldowns[i] || 0;
+        if (stats && stats.cooldown > 0) {
+            const cdRatio = Math.max(0, 1 - (cd / stats.cooldown));
+            const cdColor = cdRatio >= 1 ? '#336633' : '#222233';
+            ctx.fillStyle = cdColor;
+            ctx.fillRect(barX, wy, barW * cdRatio, barH);
+        } else {
+            ctx.fillStyle = '#336633';
+            ctx.fillRect(barX, wy, barW, barH);
+        }
+
+        // Border
+        ctx.strokeStyle = isMaxed ? '#FFD700' : '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, wy, barW, barH);
+
+        // Weapon name + pips
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = isMaxed ? '#FFD700' : '#aaa';
+        const displayName = def ? def.name : weapon.id;
+        ctx.fillText(displayName, barX + 3, wy + 8);
+
+        // Level pips on the right side
+        const pipStr = '\u25A0'.repeat(weapon.level) + '\u25A1'.repeat(maxLvl - weapon.level);
+        ctx.fillStyle = isMaxed ? '#FFD700' : '#44FF88';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(pipStr, barX + barW - 3, wy + 8);
+
+        wy += 13;
+    }
+
+    // === Passive icons (compact row below weapons) ===
+    if (player.passives.length > 0) {
+        wy += 4;
+        let px = 10;
+        for (const passive of player.passives) {
+            const def = PASSIVES[passive.id];
+            const maxLvl = 5;
+
+            // Background box
+            ctx.fillStyle = '#111';
+            ctx.fillRect(px, wy, 28, 22);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px, wy, 28, 22);
+
+            // Icon
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(def ? def.icon : '?', px + 14, wy + 12);
+
+            // Level dots below icon
+            ctx.font = '7px monospace';
+            ctx.fillStyle = '#88AAFF';
+            const dots = '\u25CF'.repeat(passive.level) + '\u25CB'.repeat(maxLvl - passive.level);
+            ctx.fillText(dots, px + 14, wy + 20);
+
+            px += 31;
+        }
+    }
+
+    // === XP bar (bottom, full width) ===
     const xpRatio = player.xp / player.xpToNext;
-    drawBar(ctx, 0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16, xpRatio, '#44FF88', '#111', '#333');
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16);
+    ctx.fillStyle = '#44FF88';
+    ctx.fillRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH * xpRatio, 16);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16);
     ctx.fillStyle = '#fff';
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Lv ${player.level}  —  ${player.xp} / ${player.xpToNext} XP`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 4);
+    ctx.fillText(`Lv ${player.level}  \u2014  ${player.xp} / ${player.xpToNext} XP`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 4);
 
-    // Kill count (top right)
-    ctx.fillStyle = '#aaa';
-    ctx.font = '14px monospace';
+    // === Kill count + Gold (top right) ===
+    ctx.font = '13px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`Kills: ${player.killCount}`, CANVAS_WIDTH - 10, 24);
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`Kills: ${player.killCount}`, CANVAS_WIDTH - 10, 22);
 
-    // Weapon inventory (top left, below HP bar)
-    ctx.font = '11px monospace';
-    ctx.textAlign = 'left';
-    let wy = 38;
-    for (const weapon of player.weapons) {
-        const maxLvl = 8;
-        const levelPips = '\u25A0'.repeat(weapon.level) + '\u25A1'.repeat(maxLvl - weapon.level);
-        ctx.fillStyle = '#888';
-        ctx.fillText(`${weapon.id}`, 12, wy);
-        ctx.fillStyle = weapon.level >= maxLvl ? '#FFD700' : '#44FF88';
-        ctx.fillText(levelPips, 100, wy);
-        wy += 14;
-    }
-
-    // Passive inventory (below weapons)
-    if (player.passives.length > 0) {
-        wy += 4;
-        for (const passive of player.passives) {
-            const maxLvl = 5;
-            ctx.fillStyle = '#777';
-            ctx.fillText(`${passive.id}`, 12, wy);
-            ctx.fillStyle = '#88AAFF';
-            ctx.fillText('\u25A0'.repeat(passive.level) + '\u25A1'.repeat(maxLvl - passive.level), 100, wy);
-            wy += 14;
-        }
-    }
+    ctx.fillStyle = '#FFD700';
+    ctx.fillText(`\u2B50 ${getGold()}`, CANVAS_WIDTH - 10, 38);
 
     ctx.textAlign = 'left';
 }
