@@ -41,6 +41,8 @@ function createEnemyObj() {
         knockbackVy: 0,
         knockbackTimer: 0,
         knockbackResist: 0,
+        // Spawn animation
+        spawnTimer: 0,
         // Death animation
         dying: false,
         deathTimer: 0,
@@ -120,6 +122,7 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.knockbackTimer = 0;
     e.knockbackResist = stats.knockbackResist || 0;
     if (elite) e.knockbackResist = Math.min(0.95, e.knockbackResist + 0.3);
+    e.spawnTimer = 0.3;
     e.dying = false;
     e.deathTimer = 0;
     e.deathRotation = 0;
@@ -158,6 +161,7 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
     e.knockbackVy = 0;
     e.knockbackTimer = 0;
     e.knockbackResist = stats.knockbackResist || 0;
+    e.spawnTimer = 0.3;
     e.dying = false;
     e.deathTimer = 0;
     e.deathRotation = 0;
@@ -201,6 +205,13 @@ export function updateEnemies(player, dt) {
             e.deathRotation += dt * 3;
             if (e.deathTimer <= 0) pool.release(e);
             return;
+        }
+
+        // Update spawn timer
+        if (e.spawnTimer > 0) {
+            e.spawnTimer -= dt;
+            if (e.spawnTimer < 0) e.spawnTimer = 0;
+            return; // skip AI during spawn animation
         }
 
         // Update hit flash

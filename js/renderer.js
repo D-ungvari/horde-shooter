@@ -14,6 +14,7 @@ import { getGold } from './meta.js';
 
 let ctx;
 let gameTime = 0;
+let _player = null;
 
 export function initRenderer(context) {
     ctx = context;
@@ -21,6 +22,7 @@ export function initRenderer(context) {
 
 export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state, orbitals, biomeId) {
     gameTime += dt || 1 / 60;
+    _player = player;
 
     // Clear with biome bg color
     const biomeDef = BIOMES[biomeId] || BIOMES.graveyard;
@@ -209,6 +211,49 @@ function drawPlayerEntity(player) {
 }
 
 function drawEnemyEntity(e) {
+    // Spawn animation: scale in from 0
+    if (e.spawnTimer > 0) {
+        const spawnT = 1 - (e.spawnTimer / 0.3); // 0→1 over 300ms
+        const scale = spawnT < 0.85 ? spawnT / 0.85 * 1.1 : 1.1 - (spawnT - 0.85) / 0.15 * 0.1; // overshoot + settle
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(scale, scale);
+        ctx.globalAlpha = 0.3 + spawnT * 0.7; // fade in
+        // Draw simplified body (just circle)
+        ctx.fillStyle = e.color || '#FF4444';
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return; // skip normal drawing during spawn
+    }
+
+    // LOD: skip composite body for distant enemies
+    if (_player) {
+        const dx = e.x - _player.x;
+        const dy = e.y - _player.y;
+        const distSq = dx * dx + dy * dy; // avoid sqrt
+        const LOD_MIN_SQ = 500 * 500; // 250000
+
+        if (distSq > LOD_MIN_SQ) {
+            // Minimal: just a colored dot
+            ctx.fillStyle = e.color || '#FF4444';
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+            // Still show hit flash at minimal LOD
+            if (e.hitFlashTimer > 0) {
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+            return;
+        }
+    }
+
     // Death animation: scale up then shrink to 0
     if (e.dying) {
         const elapsed = DEATH_ANIM_DURATION - e.deathTimer;
