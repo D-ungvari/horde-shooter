@@ -284,7 +284,7 @@ function update(dt) {
     updateAmbient(camera, currentBiome, dt);
 
     // Enemy spawning + AI
-    updateSpawner(player, dt);
+    updateSpawner(player, dt, camera);
     updateEnemies(player, dt);
 
     // Process announcements

@@ -69,6 +69,10 @@ function createEnemyObj() {
         spreadCount: 0,
         spreadAngle: 0,
         spawnCooldown: 0,
+        // Wall pattern override
+        wallTargetX: 0,
+        wallTargetY: 0,
+        wallTimer: 0,
     };
 }
 
@@ -131,6 +135,9 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.bossPhase = 'normal';
     e.specialTimer1 = 0;
     e.specialTimer2 = 0;
+    e.wallTargetX = 0;
+    e.wallTargetY = 0;
+    e.wallTimer = 0;
     return e;
 }
 
@@ -233,6 +240,20 @@ export function updateEnemies(player, dt) {
             if (e.slowTimer <= 0) {
                 e.slowFactor = 1;
             }
+        }
+
+        // Wall pattern override: march toward fixed target ignoring normal AI
+        if (e.wallTimer > 0) {
+            e.wallTimer -= dt;
+            const angle = Math.atan2(e.wallTargetY - e.y, e.wallTargetX - e.x);
+            e.targetAngle = angle;
+            const dir = v2FromAngle(angle);
+            const sp = e.speed * e.slowFactor;
+            e.vx = dir.x * sp;
+            e.vy = dir.y * sp;
+            e.x += e.vx * dt;
+            e.y += e.vy * dt;
+            return; // skip normal AI
         }
 
         const angle = angleBetween(e, player);
