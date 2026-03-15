@@ -566,10 +566,270 @@ function drawBat(e) {
     ctx.restore();
 }
 
+function drawBrute(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const speed = e.speed || 30;
+    const walkPhase = gameTime * speed * 0.08;
+    const bodyBob = Math.sin(gameTime * speed * 0.1) * 1;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Legs — 2 thick rectangles, slow stride
+    ctx.fillStyle = slowed ? '#887755' : '#AA6622';
+    for (let side = -1; side <= 1; side += 2) {
+        const legOff = Math.sin(walkPhase + side * Math.PI * 0.5) * 2;
+        ctx.fillRect(side * r * 0.4 - r * 0.18 + legOff, r * 0.4 + bodyBob, r * 0.36, r * 0.7);
+    }
+
+    // Main body — wide rounded rectangle
+    const bw = r * 1.3;
+    const bh = r * 1.1;
+    const bx = -bw;
+    const by = -bh * 0.6 + bodyBob;
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#DD8833');
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw * 2, bh, r * 0.3);
+    ctx.fill();
+
+    // Armor plate — darker rect on chest
+    ctx.fillStyle = slowed ? '#667788' : '#995522';
+    ctx.fillRect(-r * 0.5, -r * 0.3 + bodyBob, r * 1.0, r * 0.6);
+
+    // Horns — 2 triangles on top
+    ctx.fillStyle = slowed ? '#998877' : '#CCAA44';
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.4, -r * 0.6 + bodyBob);
+        ctx.lineTo(side * r * 0.65, -r * 1.3 + bodyBob);
+        ctx.lineTo(side * r * 0.2, -r * 0.55 + bodyBob);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Eyes — small, beady
+    const angle = e.targetAngle || 0;
+    const eyeDir = facingLeft ? Math.PI - angle : angle;
+    const eyeOff = Math.min(r * 0.2, 3);
+    const ex = Math.cos(eyeDir) * eyeOff;
+    const ey = Math.sin(eyeDir) * eyeOff;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(-r * 0.25 + ex, -r * 0.35 + ey + bodyBob, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.25 + ex, -r * 0.35 + ey + bodyBob, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-r * 0.25 + ex * 1.3, -r * 0.35 + ey * 1.3 + bodyBob, r * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.25 + ex * 1.3, -r * 0.35 + ey * 1.3 + bodyBob, r * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawSpitter(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const speed = e.speed || 50;
+    const walkPhase = gameTime * speed * 0.1;
+    const bodyBob = Math.sin(gameTime * speed * 0.12) * 1.5;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Big belly — large circle, lower
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#88DD33');
+    ctx.beginPath();
+    ctx.arc(0, r * 0.15 + bodyBob, r * 0.95, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Smaller head — circle on top
+    ctx.fillStyle = slowed ? '#99CCBB' : '#77CC22';
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.55 + bodyBob, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Puffed cheeks — 2 small circles on sides of head
+    ctx.fillStyle = slowed ? '#AADDCC' : '#99EE55';
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.arc(side * r * 0.5, -r * 0.35 + bodyBob, r * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Mouth circle with green projectile dot
+    ctx.fillStyle = slowed ? '#556655' : '#335511';
+    ctx.beginPath();
+    ctx.arc(r * 0.25, -r * 0.3 + bodyBob, r * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = slowed ? '#88AAAA' : '#44FF00';
+    ctx.beginPath();
+    ctx.arc(r * 0.25, -r * 0.3 + bodyBob, r * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes — standard tracking
+    const angle = e.targetAngle || 0;
+    const eyeDir = facingLeft ? Math.PI - angle : angle;
+    const eyeOff = Math.min(r * 0.25, 3);
+    const ex = Math.cos(eyeDir) * eyeOff;
+    const ey = Math.sin(eyeDir) * eyeOff;
+    const eyeScale = Math.min(r / 12, 1.5);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex, -r * 0.6 + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex, -r * 0.6 + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex * 1.3, -r * 0.6 + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex * 1.3, -r * 0.6 + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawSwarmer(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const speed = e.speed || 80;
+    const walkPhase = gameTime * speed * 0.15;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    // No horizontal flip — rotationally symmetric
+
+    // 6 legs — lineTo strokes radiating from body edge, animated as pairs
+    ctx.strokeStyle = slowed ? '#777788' : '#444444';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) {
+        const baseAngle = (i / 6) * Math.PI * 2;
+        const pair = i % 3;
+        const legAnim = Math.sin(walkPhase + pair * Math.PI * 0.67) * 0.3;
+        const legAngle = baseAngle + legAnim;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(baseAngle) * r * 0.6, Math.sin(baseAngle) * r * 0.6);
+        ctx.lineTo(Math.cos(legAngle) * r * 1.4, Math.sin(legAngle) * r * 1.4);
+        ctx.stroke();
+    }
+
+    // Body — small circle
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#555555');
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2 antennae — lines with dot tips, slight sway
+    const antennaeSway = Math.sin(gameTime * 5) * 0.2;
+    ctx.strokeStyle = slowed ? '#777788' : '#444444';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = slowed ? '#999999' : '#666666';
+    for (let side = -1; side <= 1; side += 2) {
+        const tipX = side * r * 0.5;
+        const tipY = -r * 1.0 + Math.sin(gameTime * 5 + side) * r * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.2, -r * 0.4);
+        ctx.lineTo(tipX + antennaeSway * side * r, tipY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(tipX + antennaeSway * side * r, tipY, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Eyes — 2 tiny
+    const angle = e.targetAngle || 0;
+    const eyeOff = Math.min(r * 0.15, 2);
+    const ex = Math.cos(angle) * eyeOff;
+    const ey = Math.sin(angle) * eyeOff;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(-r * 0.15 + ex, -r * 0.1 + ey, r * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.15 + ex, -r * 0.1 + ey, r * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawExploder(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const wobble = Math.sin(gameTime * 8) * r * 0.08;
+    const bodyR = r * 0.85 + wobble;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+
+    // Main body — wobbling circle
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF3333');
+    ctx.beginPath();
+    ctx.arc(0, 0, bodyR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner glow — smaller circle, bright yellow, pulsing alpha
+    const glowAlpha = 0.4 + Math.sin(gameTime * 10) * 0.3;
+    ctx.save();
+    ctx.globalAlpha = glowAlpha;
+    ctx.fillStyle = '#FFDD00';
+    ctx.beginPath();
+    ctx.arc(0, 0, bodyR * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Crack lines — 4 strokes from center outward at seeded angles
+    const seed = ((e.x * 73 + e.y * 137) | 0) & 0xFFFF;
+    ctx.strokeStyle = slowed ? '#997755' : '#880000';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+        const crackAngle = ((seed + i * 4007) % 628) / 100;
+        const crackLen = bodyR * (0.6 + ((seed + i * 1013) % 40) / 100);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(crackAngle) * crackLen, Math.sin(crackAngle) * crackLen);
+        ctx.stroke();
+    }
+
+    // Eyes — red, like Bat
+    const angle = e.targetAngle || 0;
+    const eyeOff = Math.min(r * 0.2, 3);
+    const ex = Math.cos(angle) * eyeOff;
+    const ey = Math.sin(angle) * eyeOff;
+    ctx.fillStyle = '#FF2222';
+    ctx.beginPath();
+    ctx.arc(-r * 0.2 + ex, -r * 0.15 + ey, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.2 + ex, -r * 0.15 + ey, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
 var enemyDrawFns = {
     shambler: drawShambler,
     runner: drawRunner,
     bat: drawBat,
+    brute: drawBrute,
+    spitter: drawSpitter,
+    swarmer: drawSwarmer,
+    exploder: drawExploder,
 };
 
 function drawEnemyBody(e) {
