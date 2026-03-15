@@ -5,7 +5,8 @@ import { drawBackground, drawAmbientParticles } from './background.js';
 import { BIOMES } from './biomes.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
 import { v2FromAngle, randomRange } from './utils.js';
-import { renderEffects, renderScreenEffects, renderGroundScars, getShakeOffset, spawnParticle } from './effects.js';
+import { renderEffects, renderScreenEffects, renderGroundScars, getShakeOffset, spawnParticle,
+    renderAnnouncement, renderStreak } from './effects.js';
 import { getCooldowns, getLastSweepState } from './weapons.js';
 import { WEAPONS, EVOLUTIONS, getWeaponStats } from './weaponData.js';
 import { PASSIVES } from './passiveData.js';
@@ -135,12 +136,50 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
     // Screen flash overlay
     renderScreenEffects(ctx);
 
+    // Vignette (darken edges, danger pulse at low HP)
+    if (player) {
+        drawVignette(player.health / player.maxHealth);
+    }
+
+    // Announcement banner (after vignette, before HUD)
+    renderAnnouncement(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
+
     // --- Screen space HUD ---
     drawHUD(player, state);
+
+    // Kill streak counter (bottom-right)
+    renderStreak(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, gameTime);
 
     // Minimap (only during gameplay states)
     if (state === 'PLAYING' || state === 'PAUSED') {
         drawMinimap(ctx, player, enemies, xpGems);
+    }
+}
+
+// --- Vignette effect (screen-space) ---
+function drawVignette(hpRatio) {
+    const gradient = ctx.createRadialGradient(
+        CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
+        CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.75
+    );
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Danger vignette (red) at low HP
+    if (hpRatio < 0.3) {
+        const dangerAlpha = (1 - hpRatio / 0.3) * 0.25;
+        // Pulsing
+        const pulse = dangerAlpha * (0.7 + Math.sin(gameTime * 4) * 0.3);
+        const dGrad = ctx.createRadialGradient(
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.25,
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.7
+        );
+        dGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        dGrad.addColorStop(1, `rgba(180,0,0,${pulse})`);
+        ctx.fillStyle = dGrad;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
 }
 

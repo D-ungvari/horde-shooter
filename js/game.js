@@ -16,7 +16,9 @@ import { updateEffects, resetEffects,
     spawnKillParticles, spawnBossDeathParticles, spawnHitParticles,
     spawnXPPickupFlash, spawnDamageNumber,
     triggerShake, triggerFlash, spawnShockwave,
-    spawnExplosion, spawnGroundScar } from './effects.js';
+    spawnExplosion, spawnGroundScar,
+    showAnnouncement, updateAnnouncement, updateStreak,
+    incrementStreak, resetStreak } from './effects.js';
 import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
@@ -48,9 +50,7 @@ let hitStopTimer = 0;
 let timeDilationTimer = 0;
 let frameKillCount = 0;
 
-// Announcements
-let activeAnnouncement = null;
-let announcementTimer = 0;
+// Announcements (now driven by effects.js showAnnouncement)
 
 // Pool references
 let enemyPool, projectilePool, xpPool;
@@ -302,21 +302,23 @@ function update(dt) {
     // Update combo banners (036)
     updateComboBanners(dt);
 
-    // Process announcements
+    // Process announcements → effects.js banner system
     const newAnnouncements = getAnnouncements();
     if (newAnnouncements.length > 0) {
-        activeAnnouncement = newAnnouncements[newAnnouncements.length - 1].text;
-        announcementTimer = 2.5;
-        if (activeAnnouncement.includes('BOSS') || activeAnnouncement.includes('FINAL')) {
+        const latest = newAnnouncements[newAnnouncements.length - 1];
+        // Pick color by content: boss = red, late tiers = orange, default = yellow
+        let aColor = '#FFDD44';
+        if (latest.text.includes('BOSS') || latest.text.includes('FINAL') || latest.text.includes('HELL')) {
+            aColor = '#FF4444';
+        } else if (latest.text.includes('Onslaught') || latest.text.includes('Nightmare') || latest.text.includes('WALL') || latest.text.includes('SWARMER')) {
+            aColor = '#FF8822';
+        }
+        showAnnouncement(latest.text, 2.5, aColor);
+        if (latest.text.includes('BOSS') || latest.text.includes('FINAL')) {
             playBossWarning();
         }
     }
-    if (announcementTimer > 0) {
-        announcementTimer -= dt;
-        if (announcementTimer <= 0) {
-            activeAnnouncement = null;
-        }
-    }
+    updateAnnouncement(dt);
 
     // XP gem magnet + collection
     const collectedXP = updateXPGems(player, dt);
@@ -331,6 +333,7 @@ function update(dt) {
 
     // Update effects (particles, damage numbers, screen shake)
     updateEffects(dt);
+    updateStreak(dt);
 
     // --- Spatial hash collision phase ---
     clearSpatialHash();
@@ -350,6 +353,7 @@ function update(dt) {
         if (e.health <= 0) {
             player.killCount++;
             frameKillCount++;
+            incrementStreak();
             // Death combos (035)
             checkDeathCombos(e);
             spawnKillParticles(e.x, e.y, e.color);
@@ -432,6 +436,7 @@ function update(dt) {
                 if (e.health <= 0) {
                     player.killCount++;
                     frameKillCount++;
+                    incrementStreak();
 
                     // Death combos (035): Shatter, Plague Burst
                     checkDeathCombos(e);
@@ -463,7 +468,9 @@ function update(dt) {
                         spawnGroundScar(e.x, e.y, e.explosionRadius);
                         const explosionDmg = triggerExplosion(e, player);
                         if (explosionDmg > 0) {
-                            damagePlayer(player, explosionDmg);
+                            if (damagePlayer(player, explosionDmg)) {
+                                resetStreak();
+                            }
                         }
                     }
 
@@ -596,6 +603,7 @@ function update(dt) {
         if (dx * dx + dy * dy < radSum * radSum) {
             const hit = damagePlayer(player, p.damage);
             if (hit) {
+                resetStreak();
                 triggerShake(3, 0.15);
                 triggerFlash('#FF0000', 0.2, 3);
                 playPlayerHit();
@@ -612,6 +620,7 @@ function update(dt) {
         if (circlesOverlap(player, e)) {
             const hit = damagePlayer(player, e.damage * getEnemyDamageMultiplier(e));
             if (hit) {
+                resetStreak();
                 triggerShake(3, 0.15);
                 triggerFlash('#FF0000', 0.15, 3);
                 playPlayerHit();
@@ -659,12 +668,32 @@ function render(dt) {
         drawCrosshair(ctx);
     }
 
-    // Timer
+    // Polished survival timer (top center)
     if (survivalTime !== undefined && state !== STATE.MENU) {
-        ctx.fillStyle = '#aaa';
-        ctx.font = '16px monospace';
+        const minutes = survivalTime / 60;
+        // Color shifts with difficulty tier
+        let timerColor = '#CCCCCC';
+        if (minutes >= 14) timerColor = '#FF2222';
+        else if (minutes >= 10) timerColor = '#FF6622';
+        else if (minutes >= 6) timerColor = '#FFAA22';
+        else if (minutes >= 3) timerColor = '#FFDD44';
+
+        // Subtle glow pulse at minute boundaries (pulse for 1.5s after each new minute)
+        const secIntoMinute = survivalTime % 60;
+        let glowSize = 0;
+        if (secIntoMinute < 1.5 && survivalTime > 5) {
+            glowSize = 12 * (1 - secIntoMinute / 1.5);
+        }
+
+        ctx.font = 'bold 20px monospace';
         ctx.textAlign = 'center';
+        if (glowSize > 0) {
+            ctx.shadowColor = timerColor;
+            ctx.shadowBlur = glowSize;
+        }
+        ctx.fillStyle = timerColor;
         ctx.fillText(formatTime(survivalTime), CANVAS_WIDTH / 2, 24);
+        ctx.shadowBlur = 0;
         ctx.textAlign = 'left';
     }
 
@@ -694,18 +723,6 @@ function render(dt) {
             ctx.fillText(e.type.replace(/_/g, ' ').toUpperCase(), CANVAS_WIDTH / 2, by + barH + 14);
             ctx.textAlign = 'left';
         });
-    }
-
-    // Announcement text
-    if (activeAnnouncement && announcementTimer > 0) {
-        const fade = Math.min(announcementTimer / 0.5, 1);
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 28px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(activeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
-        ctx.textAlign = 'left';
-        ctx.globalAlpha = 1.0;
     }
 
     // Combo discovery banners (036)

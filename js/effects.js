@@ -235,6 +235,9 @@ export function resetEffects() {
     shakeOffsetX = 0;
     shakeOffsetY = 0;
     flashAlpha = 0;
+    announcement = null;
+    killStreak = 0;
+    streakDisplayTimer = 0;
 }
 
 // === Spawn helpers ===
@@ -416,6 +419,113 @@ export function spawnGroundScar(x, y, radius) {
         life: 0,
         maxLife: 3.0,
     });
+}
+
+// === Announcement system (reusable banner) ===
+let announcement = null; // { text, timer, maxTimer, color }
+
+export function showAnnouncement(text, duration, color) {
+    announcement = { text, timer: duration, maxTimer: duration, color: color || '#FFDD44' };
+}
+
+export function updateAnnouncement(dt) {
+    if (announcement) {
+        announcement.timer -= dt;
+        if (announcement.timer <= 0) announcement = null;
+    }
+}
+
+export function renderAnnouncement(ctx, canvasW, canvasH) {
+    if (!announcement) return;
+    const { text, timer, maxTimer, color } = announcement;
+    const t = timer / maxTimer;
+
+    // Fade in (first 20%) and out (last 20%)
+    let alpha = 1;
+    if (t > 0.8) alpha = (1 - t) / 0.2;  // fade in
+    else if (t < 0.2) alpha = t / 0.2;     // fade out
+
+    // Banner background
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, canvasH * 0.38, canvasW, 48);
+
+    // Text with glow
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = color;
+    ctx.fillText(text, canvasW / 2, canvasH * 0.38 + 32);
+    ctx.shadowBlur = 0;
+
+    ctx.globalAlpha = 1.0;
+    ctx.textAlign = 'left';
+}
+
+// === Kill streak counter ===
+let killStreak = 0;
+let streakDisplayTimer = 0; // time since last kill for fade-out
+
+export function incrementStreak() {
+    killStreak++;
+    streakDisplayTimer = 2.0; // show for 2s after last kill
+}
+
+export function resetStreak() {
+    killStreak = 0;
+    streakDisplayTimer = 0;
+}
+
+export function updateStreak(dt) {
+    if (streakDisplayTimer > 0) {
+        streakDisplayTimer -= dt;
+        if (streakDisplayTimer <= 0 && killStreak > 0) {
+            // Don't reset streak, just stop displaying — resets on damage
+        }
+    }
+}
+
+export function getKillStreak() { return killStreak; }
+
+export function renderStreak(ctx, canvasW, canvasH, gameTime) {
+    if (killStreak < 6) return;
+    // Fade out after streakDisplayTimer hits 0
+    let alpha = 1;
+    if (streakDisplayTimer <= 0) alpha = 0;
+    else if (streakDisplayTimer < 0.5) alpha = streakDisplayTimer / 0.5;
+    if (alpha <= 0) return;
+
+    let label = `STREAK: ${killStreak}`;
+    let color = '#FFDD44';
+    let fontSize = 18;
+    if (killStreak >= 50) {
+        label = `GODLIKE: ${killStreak}`;
+        color = '#FF2222';
+        fontSize = 26;
+    } else if (killStreak >= 25) {
+        label = `UNSTOPPABLE: ${killStreak}`;
+        color = '#FF6622';
+        fontSize = 22;
+    } else if (killStreak >= 15) {
+        fontSize = 20;
+    }
+
+    // Glow intensity scales with streak
+    const glowSize = Math.min(30, 10 + killStreak * 0.4);
+    const pulse = 0.8 + Math.sin(gameTime * 5) * 0.2;
+
+    ctx.globalAlpha = alpha * pulse;
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glowSize;
+    ctx.fillStyle = color;
+    ctx.fillText(label, canvasW - 16, canvasH - 20);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+    ctx.textAlign = 'left';
 }
 
 // === Zone particle helpers (028, 029, 030) ===
