@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, HIT_FLASH_DURATION } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, HIT_FLASH_DURATION, HIT_STOP_DURATION, HIT_STOP_BOSS_DURATION, HIT_STOP_MAX } from './constants.js';
 import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as updateInputCamera } from './input.js';
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
@@ -42,6 +42,7 @@ let survivalTime;
 let escapeHeld = false;
 let pendingLevelUps = 0;
 let currentBiome = 'graveyard';
+let hitStopTimer = 0;
 
 // Announcements
 let activeAnnouncement = null;
@@ -88,6 +89,7 @@ function startPlaying() {
     camera.y = player.y;
     survivalTime = 0;
     pendingLevelUps = 0;
+    hitStopTimer = 0;
 
     clearEnemies();
     clearProjectiles();
@@ -120,6 +122,7 @@ function resumeRun() {
     currentBiome = saved.biome || 'graveyard';
     survivalTime = saved.survivalTime || 0;
     pendingLevelUps = 0;
+    hitStopTimer = 0;
 
     camera.x = player.x;
     camera.y = player.y;
@@ -203,9 +206,15 @@ function loop(timestamp) {
         if (!isKeyDown('escape')) escapeHeld = false;
 
         if (state === STATE.PLAYING) {
-            survivalTime += dt;
-            update(dt);
-            render(dt);
+            // Hit-stop: freeze gameplay but keep rendering
+            if (hitStopTimer > 0) {
+                hitStopTimer -= dt;
+                render(0);
+            } else {
+                survivalTime += dt;
+                update(dt);
+                render(dt);
+            }
 
             if (pendingLevelUps > 0) {
                 triggerLevelUp();
@@ -338,6 +347,12 @@ function update(dt) {
 
                 if (e.health <= 0) {
                     player.killCount++;
+
+                    // Hit-stop on kill (capped to prevent cascading freezes)
+                    hitStopTimer = Math.min(
+                        hitStopTimer + (e.isBoss ? HIT_STOP_BOSS_DURATION : HIT_STOP_DURATION),
+                        HIT_STOP_MAX
+                    );
 
                     // Death effects + audio
                     if (e.isBoss) {

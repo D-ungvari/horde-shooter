@@ -43,6 +43,9 @@ export const MAX_XP_GEMS = 500;
 
 // Hit feedback
 export const HIT_FLASH_DURATION = 0.05; // ~3 frames at 60fps
+export const HIT_STOP_DURATION = 0.02; // 20ms freeze on regular kill
+export const HIT_STOP_BOSS_DURATION = 0.04; // 40ms freeze on boss kill
+export const HIT_STOP_MAX = 0.05; // 50ms cap to prevent cascading freezes
 
 // Spatial hash
 export const SPATIAL_CELL_SIZE = 64;
