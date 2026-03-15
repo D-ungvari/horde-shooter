@@ -96,6 +96,7 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
             if (!p || !p.active) continue;
             if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') continue; // Already drawn
             if (!isInView(camera, p.x, p.y, Math.max(p.radius, 20) + 10)) continue;
+            drawProjectileTrail(p);
             drawProjectile(p);
         }
     }
@@ -363,6 +364,29 @@ function drawXPGem(gem) {
     ctx.beginPath();
     ctx.arc(gem.x - 1, gem.y - 2, r * 0.25, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1.0;
+}
+
+function drawProjectileTrail(p) {
+    if (p.trailCount <= 0) return;
+    // Skip trails for types that don't move or have custom visuals
+    if (p.type === 'lightning' || p.type === 'frostburst' || p.type === 'zone' ||
+        p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') return;
+
+    const trailColor = p.color || '#FFDD44';
+    for (let i = 0; i < p.trailCount; i++) {
+        // Read from ring buffer: oldest to newest
+        const idx = (p.trailHead - p.trailCount + i + 6) % 6;
+        const age = (p.trailCount - i) / p.trailCount; // 1 = oldest, 0 = newest
+        const alpha = (1 - age) * 0.4;
+        const r = p.radius * (1 - age * 0.5);
+        if (alpha < 0.02) continue;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = trailColor;
+        ctx.beginPath();
+        ctx.arc(p.trailX[idx], p.trailY[idx], Math.max(0.5, r), 0, Math.PI * 2);
+        ctx.fill();
+    }
     ctx.globalAlpha = 1.0;
 }
 

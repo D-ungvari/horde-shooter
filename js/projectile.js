@@ -37,6 +37,11 @@ function createProjectileObj() {
         // Knockback
         knockbackDist: 0,
         knockbackSpeed: 0,
+        // Trail (ring buffer of 6 previous positions)
+        trailX: new Float32Array(6),
+        trailY: new Float32Array(6),
+        trailHead: 0,
+        trailCount: 0,
     };
 }
 
@@ -84,11 +89,25 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     // Knockback
     p.knockbackDist = opts.knockbackDist || 0;
     p.knockbackSpeed = opts.knockbackSpeed || 0;
+    // Trail
+    p.trailHead = 0;
+    p.trailCount = 0;
     return p;
 }
 
+// Types that get trail effects (moving projectiles only)
+const TRAIL_TYPES = new Set(['normal', 'flame', 'boomerang', 'chakram', 'enemy']);
+
 export function updateProjectiles(dt, player) {
     pool.forEach(p => {
+        // Record trail position before movement
+        if (TRAIL_TYPES.has(p.type)) {
+            p.trailX[p.trailHead] = p.x;
+            p.trailY[p.trailHead] = p.y;
+            p.trailHead = (p.trailHead + 1) % 6;
+            if (p.trailCount < 6) p.trailCount++;
+        }
+
         p.lifetime += dt;
 
         if (p.type === 'boomerang' || p.type === 'chakram') {
