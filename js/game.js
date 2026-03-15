@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, HIT_FLASH_DURATION, HIT_STOP_DURATION, HIT_STOP_BOSS_DURATION, HIT_STOP_MAX } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, HIT_FLASH_DURATION, HIT_STOP_DURATION, HIT_STOP_BOSS_DURATION, HIT_STOP_MAX, TIME_DILATION_FACTOR, TIME_DILATION_DURATION, TIME_DILATION_KILL_THRESHOLD } from './constants.js';
 import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as updateInputCamera } from './input.js';
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
@@ -43,6 +43,8 @@ let escapeHeld = false;
 let pendingLevelUps = 0;
 let currentBiome = 'graveyard';
 let hitStopTimer = 0;
+let timeDilationTimer = 0;
+let frameKillCount = 0;
 
 // Announcements
 let activeAnnouncement = null;
@@ -90,6 +92,7 @@ function startPlaying() {
     survivalTime = 0;
     pendingLevelUps = 0;
     hitStopTimer = 0;
+    timeDilationTimer = 0;
 
     clearEnemies();
     clearProjectiles();
@@ -123,6 +126,7 @@ function resumeRun() {
     survivalTime = saved.survivalTime || 0;
     pendingLevelUps = 0;
     hitStopTimer = 0;
+    timeDilationTimer = 0;
 
     camera.x = player.x;
     camera.y = player.y;
@@ -211,6 +215,11 @@ function loop(timestamp) {
                 hitStopTimer -= dt;
                 render(0);
             } else {
+                // Time dilation: slow game after mass kills
+                if (timeDilationTimer > 0) {
+                    timeDilationTimer -= dt;
+                    dt *= TIME_DILATION_FACTOR;
+                }
                 survivalTime += dt;
                 update(dt);
                 render(dt);
@@ -253,6 +262,8 @@ async function triggerLevelUp() {
 }
 
 function update(dt) {
+    frameKillCount = 0;
+
     // Player movement
     updatePlayer(player, dt);
 
@@ -349,6 +360,7 @@ function update(dt) {
 
                 if (e.health <= 0) {
                     player.killCount++;
+                    frameKillCount++;
 
                     // Hit-stop on kill (capped to prevent cascading freezes)
                     hitStopTimer = Math.min(
@@ -443,6 +455,11 @@ function update(dt) {
             releaseEnemy(e);
         }
     });
+
+    // Multi-kill time dilation
+    if (frameKillCount >= TIME_DILATION_KILL_THRESHOLD) {
+        timeDilationTimer = TIME_DILATION_DURATION;
+    }
 
     // Death check
     if (player.health <= 0) {

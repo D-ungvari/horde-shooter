@@ -47,6 +47,11 @@ export const HIT_STOP_DURATION = 0.02; // 20ms freeze on regular kill
 export const HIT_STOP_BOSS_DURATION = 0.04; // 40ms freeze on boss kill
 export const HIT_STOP_MAX = 0.05; // 50ms cap to prevent cascading freezes
 
+// Multi-kill time dilation
+export const TIME_DILATION_FACTOR = 0.8; // 80% speed
+export const TIME_DILATION_DURATION = 0.1; // 100ms
+export const TIME_DILATION_KILL_THRESHOLD = 10; // kills in one frame
+
 // Death animation
 export const DEATH_ANIM_DURATION = 0.15; // 150ms total
 export const DEATH_ANIM_EXPAND_PHASE = 0.05; // first 50ms: scale 1.0 → 1.3
