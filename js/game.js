@@ -5,7 +5,7 @@ import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
 import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions, spawnPlagueSpread } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
-import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion, applyKnockback, applyCrowdPush } from './enemy.js';
+import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, startDying, triggerExplosion, applyKnockback, applyCrowdPush } from './enemy.js';
 import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
@@ -309,9 +309,9 @@ function update(dt) {
     // --- Spatial hash collision phase ---
     clearSpatialHash();
 
-    // Insert enemies into hash
+    // Insert enemies into hash (skip dying — no collisions)
     enemyPool.forEach(e => {
-        insertIntoHash(e);
+        if (!e.dying) insertIntoHash(e);
     });
 
     // Crowd-push (knocked-back enemies push neighbors)
@@ -327,7 +327,7 @@ function update(dt) {
 
         const nearby = queryHash(p.x, p.y, p.radius + 30);
         for (const e of nearby) {
-            if (!e.active) continue;
+            if (!e.active || e.dying) continue;
             if (p.hitSet.has(e._poolIndex)) continue;
             if (circlesOverlap(p, e)) {
                 e.health -= p.damage;
@@ -381,7 +381,7 @@ function update(dt) {
                     }
 
                     spawnXPBurst(e.x, e.y, e.xpValue);
-                    releaseEnemy(e);
+                    startDying(e);
                 } else {
                     playEnemyHit();
                 }
@@ -420,7 +420,7 @@ function update(dt) {
     // Enemy vs Player body collisions
     const nearPlayer = queryHash(player.x, player.y, player.radius + 30);
     for (const e of nearPlayer) {
-        if (!e.active) continue;
+        if (!e.active || e.dying) continue;
         if (circlesOverlap(player, e)) {
             const hit = damagePlayer(player, e.damage);
             if (hit) {

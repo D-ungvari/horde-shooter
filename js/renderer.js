@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, COLOR_PLAYER, COLOR_PLAYER_DARK, COLOR_BULLET } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, COLOR_PLAYER, COLOR_PLAYER_DARK, COLOR_BULLET, DEATH_ANIM_DURATION, DEATH_ANIM_EXPAND_PHASE } from './constants.js';
 import { applyCamera, isInView } from './camera.js';
 import { getMouse } from './input.js';
 import { drawBackground, drawAmbientParticles } from './background.js';
@@ -208,6 +208,43 @@ function drawPlayerEntity(player) {
 }
 
 function drawEnemyEntity(e) {
+    // Death animation: scale up then shrink to 0
+    if (e.dying) {
+        const elapsed = DEATH_ANIM_DURATION - e.deathTimer;
+        let scale;
+        if (elapsed <= DEATH_ANIM_EXPAND_PHASE) {
+            scale = 1.0 + 0.3 * (elapsed / DEATH_ANIM_EXPAND_PHASE);
+        } else {
+            const shrinkT = (elapsed - DEATH_ANIM_EXPAND_PHASE) / (DEATH_ANIM_DURATION - DEATH_ANIM_EXPAND_PHASE);
+            scale = 1.3 * (1 - shrinkT);
+        }
+        scale = Math.max(0, scale);
+
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(scale, scale);
+        ctx.rotate(e.deathRotation);
+        ctx.globalAlpha = Math.max(0.1, scale / 1.3);
+
+        // Simplified body for death anim
+        ctx.fillStyle = e.color || '#FF4444';
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White flash overlay during expand
+        if (elapsed <= DEATH_ANIM_EXPAND_PHASE) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.globalAlpha = 0.6;
+            ctx.beginPath();
+            ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+        return;
+    }
+
     // Slow tint
     const slowed = e.slowTimer > 0;
 

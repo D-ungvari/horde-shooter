@@ -1,5 +1,5 @@
 import { createPool } from './objectPool.js';
-import { MAX_ENEMIES } from './constants.js';
+import { MAX_ENEMIES, DEATH_ANIM_DURATION } from './constants.js';
 import { ENEMIES, BOSSES, getScaledStats, getScaledBossStats } from './enemyData.js';
 import { spawnProjectile } from './projectile.js';
 import { queryHash } from './physics.js';
@@ -41,6 +41,10 @@ function createEnemyObj() {
         knockbackVy: 0,
         knockbackTimer: 0,
         knockbackResist: 0,
+        // Death animation
+        dying: false,
+        deathTimer: 0,
+        deathRotation: 0,
         // Exploder
         explosionRadius: 0,
         explosionDamage: 0,
@@ -116,6 +120,9 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.knockbackTimer = 0;
     e.knockbackResist = stats.knockbackResist || 0;
     if (elite) e.knockbackResist = Math.min(0.95, e.knockbackResist + 0.3);
+    e.dying = false;
+    e.deathTimer = 0;
+    e.deathRotation = 0;
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -151,6 +158,9 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
     e.knockbackVy = 0;
     e.knockbackTimer = 0;
     e.knockbackResist = stats.knockbackResist || 0;
+    e.dying = false;
+    e.deathTimer = 0;
+    e.deathRotation = 0;
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -185,6 +195,14 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
 
 export function updateEnemies(player, dt) {
     pool.forEach(e => {
+        // Tick dying enemies — skip all AI
+        if (e.dying) {
+            e.deathTimer -= dt;
+            e.deathRotation += dt * 3;
+            if (e.deathTimer <= 0) pool.release(e);
+            return;
+        }
+
         // Update hit flash
         if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
 
@@ -502,6 +520,12 @@ export function triggerExplosion(e, player) {
         return e.explosionDamage;
     }
     return 0;
+}
+
+export function startDying(e) {
+    e.dying = true;
+    e.deathTimer = DEATH_ANIM_DURATION;
+    e.deathRotation = 0;
 }
 
 export function applyKnockback(enemy, sourceX, sourceY, knockbackDist, knockbackSpeed) {

@@ -4,8 +4,8 @@
 PLAN — planning implementation
 
 ## Current Work Item
-**003 — Kill hit-stop** — 15-30ms game freeze on kills (not hits)
+**004 — Kill death-pop animation** — Scale up to 1.3x then shrink to 0 on death
 
 ## Context for Next Session
-- Items 001 (hit flash) and 002 (knockback) complete
-- Starting planning for item 003
+- Items 001-003 complete
+- Starting item 004

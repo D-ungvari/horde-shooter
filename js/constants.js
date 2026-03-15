@@ -47,5 +47,9 @@ export const HIT_STOP_DURATION = 0.02; // 20ms freeze on regular kill
 export const HIT_STOP_BOSS_DURATION = 0.04; // 40ms freeze on boss kill
 export const HIT_STOP_MAX = 0.05; // 50ms cap to prevent cascading freezes
 
+// Death animation
+export const DEATH_ANIM_DURATION = 0.15; // 150ms total
+export const DEATH_ANIM_EXPAND_PHASE = 0.05; // first 50ms: scale 1.0 → 1.3
+
 // Spatial hash
 export const SPATIAL_CELL_SIZE = 64;

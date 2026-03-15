@@ -6,7 +6,6 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Up Next
 
 ### Phase 1: Juice & Impact
-- [ ] **003 — Kill hit-stop** — 15-30ms game freeze on kills (not hits)
 - [ ] **004 — Kill death-pop animation** — Scale up to 1.3x then shrink to 0 on death
 - [ ] **005 — Enhanced kill particles** — 12-20 particles per kill, more dramatic
 - [ ] **006 — Screen shake tuning** — Micro-shake on hit, bigger on kill, massive on boss kill
@@ -72,3 +71,4 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Completed
 - [x] **001 — Hit flash system** — White overlay on enemies for ~3 frames when damaged (4130059)
 - [x] **002 — Hit knockback system** — Per-weapon knockback values, crowd-push physics (119ccb5)
+- [x] **003 — Kill hit-stop** — 15-30ms game freeze on kills, 40ms on boss (ce34782)
