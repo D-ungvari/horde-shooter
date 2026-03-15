@@ -15,7 +15,8 @@ import { formatTime } from './utils.js';
 import { updateEffects, resetEffects,
     spawnKillParticles, spawnBossDeathParticles, spawnHitParticles,
     spawnXPPickupFlash, spawnDamageNumber,
-    triggerShake, triggerFlash, spawnShockwave } from './effects.js';
+    triggerShake, triggerFlash, spawnShockwave,
+    spawnExplosion, spawnGroundScar } from './effects.js';
 import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
@@ -385,6 +386,8 @@ function update(dt) {
                         playExplosion();
                         triggerShake(5, 0.2);
                         spawnShockwave(e.x, e.y, e.explosionRadius, '#FF4422');
+                        spawnExplosion(e.x, e.y, e.explosionRadius, '#FF4422');
+                        spawnGroundScar(e.x, e.y, e.explosionRadius);
                         const explosionDmg = triggerExplosion(e, player);
                         if (explosionDmg > 0) {
                             damagePlayer(player, explosionDmg);
@@ -406,6 +409,28 @@ function update(dt) {
                 if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') {
                     // These don't consume pierce
                 } else if (p.pierce <= 0) {
+                    // AoE explosion on impact (027) — rockets, flak, MIRV
+                    if (p.aoeRadius > 0) {
+                        spawnExplosion(p.x, p.y, p.aoeRadius, p.color);
+                        spawnGroundScar(p.x, p.y, p.aoeRadius);
+                        spawnShockwave(p.x, p.y, p.aoeRadius, p.color);
+                        // Splash damage to all enemies in AoE radius
+                        const splashNearby = queryHash(p.x, p.y, p.aoeRadius);
+                        for (const se of splashNearby) {
+                            if (!se.active || se.dying) continue;
+                            if (p.hitSet.has(se._poolIndex)) continue; // skip already-hit target
+                            const sdx = se.x - p.x;
+                            const sdy = se.y - p.y;
+                            if (sdx * sdx + sdy * sdy < p.aoeRadius * p.aoeRadius) {
+                                se.health -= p.damage * 0.6;
+                                se.hitFlashTimer = HIT_FLASH_DURATION;
+                                spawnDamageNumber(se.x, se.y, Math.round(p.damage * 0.6));
+                                if (p.knockbackDist > 0) {
+                                    applyKnockback(se, p.x, p.y, p.knockbackDist, p.knockbackSpeed);
+                                }
+                            }
+                        }
+                    }
                     projectilePool.release(p);
                     break;
                 } else {

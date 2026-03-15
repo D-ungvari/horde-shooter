@@ -5,7 +5,7 @@ import { getEnemyPool, applyKnockback } from './enemy.js';
 import { HIT_FLASH_DURATION } from './constants.js';
 import { v2Normalize, v2FromAngle, v2Dist, v2Sub, angleBetween, randomRange } from './utils.js';
 import { playShoot, playShotgun, playSmg, playRocket, playLightning, playFlame, playFrostNova } from './audio.js';
-import { spawnShockwave } from './effects.js';
+import { spawnShockwave, spawnExplosion, spawnGroundScar } from './effects.js';
 
 // Weapon sound dispatch
 function playWeaponSound(weaponId) {
@@ -425,8 +425,10 @@ function updateOrbitals(player, stats, slotIndex, dt) {
                 }
             });
 
-            // Shockwave ring
+            // Shockwave ring + explosion visual (027)
             spawnShockwave(player.x, player.y, pulseRadius, stats.color || '#4488FF');
+            spawnExplosion(player.x, player.y, pulseRadius, stats.color || '#4488FF');
+            spawnGroundScar(player.x, player.y, pulseRadius);
 
             // Visual: expanding ring burst
             const ringCount = 16;
@@ -535,8 +537,10 @@ function fireAutoBurst(player, stats, damage) {
         }
     });
 
-    // Shockwave ring
+    // Shockwave ring + explosion visual (027)
     spawnShockwave(player.x, player.y, burstRadius, stats.color || '#AADDFF');
+    spawnExplosion(player.x, player.y, burstRadius, stats.color || '#AADDFF');
+    spawnGroundScar(player.x, player.y, burstRadius);
 
     // Visual burst: spawn ring of short projectiles outward
     const ringCount = hasFreezeDot ? 20 : 12;

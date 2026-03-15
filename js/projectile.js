@@ -1,5 +1,7 @@
 import { createPool } from './objectPool.js';
 import { MAX_PROJECTILES } from './constants.js';
+import { spawnParticle } from './effects.js';
+import { randomRange } from './utils.js';
 
 function createProjectileObj() {
     return {
@@ -131,6 +133,16 @@ export function updateProjectiles(dt, player) {
             // Normal movement
             p.x += p.vx * dt;
             p.y += p.vy * dt;
+
+            // (031) Rocket smoke trail — 1 gray smoke particle every ~3 frames
+            if (p.aoeRadius > 0 && p.type === 'normal' && Math.random() < 0.33) {
+                spawnParticle(
+                    p.x + randomRange(-3, 3), p.y + randomRange(-3, 3),
+                    randomRange(-15, 15), randomRange(-15, 15),
+                    randomRange(2, 4), '#888888',
+                    randomRange(0.3, 0.6), true, 0
+                );
+            }
         }
 
         if (p.lifetime >= p.maxLifetime) {

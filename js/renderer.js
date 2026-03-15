@@ -4,8 +4,8 @@ import { getMouse } from './input.js';
 import { drawBackground, drawAmbientParticles } from './background.js';
 import { BIOMES } from './biomes.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
-import { v2FromAngle } from './utils.js';
-import { renderEffects, renderScreenEffects, getShakeOffset } from './effects.js';
+import { v2FromAngle, randomRange } from './utils.js';
+import { renderEffects, renderScreenEffects, renderGroundScars, getShakeOffset, spawnParticle } from './effects.js';
 import { getCooldowns } from './weapons.js';
 import { WEAPONS, EVOLUTIONS, getWeaponStats } from './weaponData.js';
 import { PASSIVES } from './passiveData.js';
@@ -40,6 +40,9 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
 
     // Ambient particles (mist, embers, sparks)
     drawAmbientParticles(ctx, biomeId);
+
+    // Ground scars (032) — fading blast marks drawn in background layer
+    renderGroundScars(ctx);
 
     // Zone projectiles (draw under everything)
     if (projectiles) {
@@ -1458,6 +1461,18 @@ function drawFireZone(p) {
     ctx.stroke();
 
     ctx.globalAlpha = 1.0;
+
+    // (028) Rising flame particles — ~2-3 per 0.3s
+    if (Math.random() < 0.15) {
+        const angle = randomRange(0, Math.PI * 2);
+        const dist = randomRange(0, r * 0.8);
+        const px = p.x + Math.cos(angle) * dist;
+        const py = p.y + Math.sin(angle) * dist;
+        const colors = ['#FF6600', '#FF4400', '#FFAA22'];
+        spawnParticle(px, py, randomRange(-10, 10), randomRange(-40, -80),
+            randomRange(2, 4), colors[Math.floor(Math.random() * 3)],
+            randomRange(0.3, 0.6), true, 0);
+    }
 }
 
 function drawPlagueZone(p) {
@@ -1497,6 +1512,18 @@ function drawPlagueZone(p) {
     ctx.setLineDash([]);
 
     ctx.globalAlpha = 1.0;
+
+    // (030) Plague bubble particles — 1-2 rising every ~0.5s
+    if (Math.random() < 0.06) {
+        const angle = randomRange(0, Math.PI * 2);
+        const dist = randomRange(0, r * 0.7);
+        const px = p.x + Math.cos(angle) * dist;
+        const py = p.y + Math.sin(angle) * dist;
+        const colors = ['#88FF22', '#66FF00', '#AAFF44'];
+        spawnParticle(px, py, randomRange(-5, 5), randomRange(-25, -50),
+            randomRange(1.5, 3), colors[Math.floor(Math.random() * 3)],
+            randomRange(0.4, 0.8), true, 0);
+    }
 }
 
 function drawFrostDotZone(p) {
@@ -1539,6 +1566,18 @@ function drawFrostDotZone(p) {
     }
 
     ctx.globalAlpha = 1.0;
+
+    // (029) Frost mist particles — 1-2 drifting slowly within zone
+    if (Math.random() < 0.08) {
+        const angle = randomRange(0, Math.PI * 2);
+        const dist = randomRange(0, r * 0.7);
+        const px = p.x + Math.cos(angle) * dist;
+        const py = p.y + Math.sin(angle) * dist;
+        const colors = ['#AADDFF', '#88CCFF', '#CCEEFF'];
+        spawnParticle(px, py, randomRange(-15, 15), randomRange(-15, 15),
+            randomRange(2, 5), colors[Math.floor(Math.random() * 3)],
+            randomRange(0.5, 1.0), true, 0);
+    }
 }
 
 function drawFrostBurst(p) {

@@ -39,6 +39,14 @@ let flashColor = '#FFFFFF';
 let flashAlpha = 0;
 let flashDecay = 3;
 
+// --- Explosions (027) ---
+const explosions = [];
+const MAX_EXPLOSIONS = 15;
+
+// --- Ground Scars (032) ---
+const groundScars = [];
+const MAX_GROUND_SCARS = 30;
+
 // === Public API ===
 
 export function updateEffects(dt) {
@@ -75,6 +83,24 @@ export function updateEffects(dt) {
         }
     }
 
+    // Explosions
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex = explosions[i];
+        ex.life += dt;
+        if (ex.life >= ex.maxLife) {
+            explosions.splice(i, 1);
+        }
+    }
+
+    // Ground scars
+    for (let i = groundScars.length - 1; i >= 0; i--) {
+        const gs = groundScars[i];
+        gs.life += dt;
+        if (gs.life >= gs.maxLife) {
+            groundScars.splice(i, 1);
+        }
+    }
+
     // Screen shake
     if (shakeDuration > 0) {
         shakeDuration -= dt;
@@ -93,7 +119,50 @@ export function updateEffects(dt) {
     }
 }
 
+export function renderGroundScars(ctx) {
+    // Ground scars (032) — drawn early in render order, before enemies
+    for (const gs of groundScars) {
+        const fade = 1 - (gs.life / gs.maxLife);
+        ctx.globalAlpha = gs.alpha * fade;
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(gs.x, gs.y, gs.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+}
+
 export function renderEffects(ctx, camera) {
+    // Explosions (027) — expanding circle + core flash
+    for (const ex of explosions) {
+        const t = ex.life / ex.maxLife;
+        // Expanding circle: 0 → blast radius over 150ms
+        const expandT = Math.min(ex.life / 0.15, 1);
+        const circleR = ex.radius * expandT;
+        ctx.globalAlpha = (1 - t) * 0.4;
+        ctx.fillStyle = ex.color;
+        ctx.beginPath();
+        ctx.arc(ex.x, ex.y, circleR, 0, Math.PI * 2);
+        ctx.fill();
+        // Shockwave ring at 1.5x expansion speed
+        const ringT = Math.min(ex.life / 0.1, 1); // 1.5x faster → reaches radius in 100ms
+        const ringR = ex.radius * ringT;
+        ctx.globalAlpha = (1 - t) * 0.6;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = Math.max(1, 3 * (1 - t));
+        ctx.beginPath();
+        ctx.arc(ex.x, ex.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        // Core flash: bright white, 10px, fades over 50ms
+        const flashT = Math.min(ex.life / 0.05, 1);
+        ctx.globalAlpha = (1 - flashT) * 0.9;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(ex.x, ex.y, 10 * (1 - flashT * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+
     // Particles (world space — called inside camera transform)
     particlePool.forEach(p => {
         const fade = 1 - (p.life / p.maxLife);
@@ -159,6 +228,8 @@ export function resetEffects() {
     particlePool.clear();
     shockwaves.length = 0;
     damageNumbers.length = 0;
+    explosions.length = 0;
+    groundScars.length = 0;
     shakeIntensity = 0;
     shakeDuration = 0;
     shakeOffsetX = 0;
@@ -303,4 +374,63 @@ export function spawnShockwave(x, y, maxRadius, color = '#FFFFFF') {
 
 export function getShakeOffset() {
     return { x: shakeOffsetX, y: shakeOffsetY };
+}
+
+// === Explosion effect (027) ===
+
+export function spawnExplosion(x, y, radius, color) {
+    if (explosions.length >= MAX_EXPLOSIONS) explosions.shift();
+    explosions.push({
+        x, y, radius, color,
+        life: 0,
+        maxLife: 0.2,
+    });
+    // 4-8 debris particles outward from center
+    const debrisCount = 4 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < debrisCount; i++) {
+        const p = particlePool.acquire();
+        if (!p) break;
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(100, 250);
+        p.x = x + randomRange(-3, 3);
+        p.y = y + randomRange(-3, 3);
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+        p.radius = randomRange(2, 5);
+        p.color = color;
+        p.life = 0;
+        p.maxLife = randomRange(0.3, 0.6);
+        p.shrink = true;
+        p.gravity = randomRange(60, 200);
+    }
+}
+
+// === Ground scar (032) ===
+
+export function spawnGroundScar(x, y, radius) {
+    if (groundScars.length >= MAX_GROUND_SCARS) groundScars.shift();
+    groundScars.push({
+        x, y,
+        radius: radius * 0.8,
+        alpha: 0.3,
+        life: 0,
+        maxLife: 3.0,
+    });
+}
+
+// === Zone particle helpers (028, 029, 030) ===
+
+export function spawnParticle(x, y, vx, vy, radius, color, maxLife, shrink = true, gravity = 0) {
+    const p = particlePool.acquire();
+    if (!p) return;
+    p.x = x;
+    p.y = y;
+    p.vx = vx;
+    p.vy = vy;
+    p.radius = radius;
+    p.color = color;
+    p.life = 0;
+    p.maxLife = maxLife;
+    p.shrink = shrink;
+    p.gravity = gravity;
 }
