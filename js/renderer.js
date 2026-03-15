@@ -822,6 +822,322 @@ function drawExploder(e) {
     ctx.restore();
 }
 
+// --- Helper: darken a hex color by a factor (for boss phase shift) ---
+function darkenHex(hex, factor) {
+    const r = Math.round(parseInt(hex.slice(1, 3), 16) * factor);
+    const g = Math.round(parseInt(hex.slice(3, 5), 16) * factor);
+    const b = Math.round(parseInt(hex.slice(5, 7), 16) * factor);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function getBossDarkFactor(e) {
+    const hpRatio = e.health / e.maxHealth;
+    return hpRatio < 0.25 ? 0.6 : hpRatio < 0.5 ? 0.8 : 1.0;
+}
+
+// --- Boss: Flesh Colossus ---
+// Massive round body + 4 dangling tentacle appendages (bezier sway) + single glowing eye
+function drawFleshColossus(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const walkPhase = gameTime * (e.speed || 22) * 0.06;
+    const bodyBob = Math.sin(walkPhase * 1.33) * 2;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+    const df = getBossDarkFactor(e);
+    const baseColor = slowed ? '#88BBDD' : darkenHex(e.color || '#CC6633', df);
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // 4 tentacles — bezier curves with sway
+    ctx.strokeStyle = slowed ? '#778899' : darkenHex('#AA5522', df);
+    ctx.lineWidth = r * 0.18;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
+        const sway = Math.sin(walkPhase * 1.5 + i * 1.7) * r * 0.4;
+        const sx = Math.cos(a) * r * 0.6, sy = Math.sin(a) * r * 0.6 + bodyBob;
+        const tx = Math.cos(a) * r * 1.8 + sway, ty = Math.sin(a) * r * 1.8 + bodyBob;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo((sx + tx) * 0.5 + Math.sin(walkPhase + i) * r * 0.5,
+            (sy + ty) * 0.5 + Math.cos(walkPhase + i * 0.8) * r * 0.3, tx, ty);
+        ctx.stroke();
+    }
+
+    // Main body
+    ctx.fillStyle = baseColor;
+    ctx.beginPath();
+    ctx.arc(0, bodyBob, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Belly patch
+    ctx.fillStyle = slowed ? '#667788' : darkenHex('#993D1A', df);
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.2 + bodyBob, r * 0.6, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Vein lines
+    ctx.strokeStyle = slowed ? '#7799AA' : darkenHex('#DD7744', df);
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) {
+        const a = -0.6 + i * 0.6;
+        ctx.beginPath(); ctx.arc(0, bodyBob, r * 0.75, a - 0.3, a + 0.3); ctx.stroke();
+    }
+
+    // Single glowing eye
+    const eyeDir = facingLeft ? Math.PI - (e.targetAngle || 0) : (e.targetAngle || 0);
+    const ex = Math.cos(eyeDir) * r * 0.15, ey = Math.sin(eyeDir) * r * 0.15;
+    const eyeY = -r * 0.15 + bodyBob;
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = slowed ? '#88AACC' : '#FFCC00';
+    ctx.beginPath(); ctx.arc(ex, eyeY + ey, r * 0.35, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = '#FFFFCC';
+    ctx.beginPath(); ctx.arc(ex, eyeY + ey, r * 0.22, 0, Math.PI * 2); ctx.fill();
+    // Vertical slit pupil
+    ctx.fillStyle = '#220000';
+    ctx.beginPath();
+    ctx.ellipse(ex * 1.3, eyeY + ey * 1.3, r * 0.05, r * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// --- Boss: Hive Queen ---
+// Segmented insect body (3 overlapping ellipses) + translucent wing pair + crown of antennae
+function drawHiveQueen(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const walkPhase = gameTime * (e.speed || 35) * 0.1;
+    const bodyBob = Math.sin(walkPhase * 1.2) * 1.5;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+    const df = getBossDarkFactor(e);
+    const baseColor = slowed ? '#88BBDD' : darkenHex(e.color || '#8844AA', df);
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Translucent wings behind body
+    const wingFlutter = Math.sin(gameTime * 12) * 0.25;
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = slowed ? '#AACCDD' : darkenHex('#BB77DD', df);
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.save();
+        ctx.translate(side * r * 0.3, -r * 0.3 + bodyBob);
+        ctx.rotate(side * (0.4 + wingFlutter));
+        ctx.beginPath();
+        ctx.ellipse(side * r * 0.4, -r * 0.2, r * 0.7, r * 0.3, side * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Abdomen (rear, largest)
+    ctx.fillStyle = slowed ? '#7799BB' : darkenHex('#6B3388', df);
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.5 + bodyBob, r * 0.9, r * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Abdomen stripes
+    ctx.strokeStyle = slowed ? '#556677' : darkenHex('#552266', df);
+    ctx.lineWidth = 1.5;
+    for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.ellipse(0, r * (0.4 + i * 0.15) + bodyBob, r * 0.7, r * 0.08, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    // Thorax + Head
+    ctx.fillStyle = baseColor;
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.05 + bodyBob, r * 0.7, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.55 + bodyBob, r * 0.45, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Crown of 5 antennae
+    ctx.strokeStyle = slowed ? '#99AACC' : darkenHex('#AA66CC', df);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+        const spread = (i - 2) * 0.35, sway = Math.sin(walkPhase * 1.2 + i * 1.3) * r * 0.15;
+        const bY = -r * 0.85 + bodyBob;
+        ctx.beginPath();
+        ctx.moveTo(spread * r * 0.3, bY);
+        ctx.quadraticCurveTo(spread * r * 0.8 + sway, bY - r * 0.5, spread * r * 1.1 + sway, bY - r * 0.8);
+        ctx.stroke();
+    }
+
+    // Compound eyes
+    const eyeDir = facingLeft ? Math.PI - (e.targetAngle || 0) : (e.targetAngle || 0);
+    const eOff = Math.min(r * 0.15, 3);
+    const ex = Math.cos(eyeDir) * eOff, ey = Math.sin(eyeDir) * eOff;
+    ctx.fillStyle = slowed ? '#AACCDD' : '#FF44FF';
+    for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath();
+        ctx.ellipse(s * r * 0.2 + ex, -r * 0.55 + ey + bodyBob, r * 0.13, r * 0.17, s * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = '#000';
+    for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath(); ctx.arc(s * r * 0.2 + ex * 1.3, -r * 0.55 + ey * 1.3 + bodyBob, r * 0.05, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+// --- Boss: Infernal Knight ---
+// Angular armored body (rects + triangles) + flaming sword arm + visor slit eyes
+function drawInfernalKnight(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const walkPhase = gameTime * (e.speed || 60) * 0.1;
+    const bodyBob = Math.sin(walkPhase) * 1.5;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+    const df = getBossDarkFactor(e);
+    const baseColor = slowed ? '#88BBDD' : darkenHex(e.color || '#FF4400', df);
+    const armorColor = slowed ? '#667788' : darkenHex('#882200', df);
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Armored legs
+    ctx.fillStyle = armorColor;
+    for (let s = -1; s <= 1; s += 2) {
+        const off = Math.sin(walkPhase + s * Math.PI * 0.5) * 3;
+        ctx.fillRect(s * r * 0.35 - r * 0.12 + off, r * 0.3 + bodyBob, r * 0.24, r * 0.8);
+    }
+
+    // Sword arm (right)
+    ctx.save();
+    ctx.translate(r * 0.7, -r * 0.1 + bodyBob);
+    ctx.rotate(-0.3 + Math.sin(walkPhase * 0.8) * 0.2);
+    ctx.fillStyle = slowed ? '#99AABB' : darkenHex('#CC6600', df);
+    ctx.fillRect(-r * 0.06, -r * 1.6, r * 0.12, r * 1.3);
+    // Sword tip
+    ctx.fillStyle = slowed ? '#AABBCC' : darkenHex('#FF8800', df);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 1.6); ctx.lineTo(0, -r * 2.0); ctx.lineTo(r * 0.1, -r * 1.6);
+    ctx.closePath(); ctx.fill();
+    // Flame particles on sword
+    if (!slowed) {
+        ctx.globalAlpha = 0.7;
+        const flameColors = ['#FFDD00', '#FF8800', '#FF4400'];
+        for (let i = 0; i < 3; i++) {
+            ctx.fillStyle = flameColors[i];
+            ctx.beginPath();
+            ctx.arc(Math.sin(gameTime * 8 + i * 3.3) * r * 0.1,
+                -r * (0.6 + i * 0.4) + Math.sin(gameTime * 10 + i * 2.1) * r * 0.15,
+                r * (0.06 + Math.sin(gameTime * 12 + i) * 0.03), 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+    }
+    ctx.fillStyle = slowed ? '#778899' : '#554433';
+    ctx.fillRect(-r * 0.15, -r * 0.3, r * 0.3, r * 0.08);
+    ctx.restore();
+
+    // Shield arm (left)
+    ctx.save();
+    ctx.translate(-r * 0.75, -r * 0.05 + bodyBob);
+    ctx.rotate(0.15);
+    ctx.fillStyle = armorColor;
+    ctx.fillRect(-r * 0.2, -r * 0.35, r * 0.4, r * 0.7);
+    ctx.fillStyle = slowed ? '#99AABB' : darkenHex('#FF6622', df);
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 0.2); ctx.lineTo(-r * 0.1, r * 0.1); ctx.lineTo(r * 0.1, r * 0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // Armored torso
+    ctx.fillStyle = baseColor;
+    ctx.beginPath(); ctx.roundRect(-r * 0.6, -r * 0.65 + bodyBob, r * 1.2, r * 1.1, r * 0.15); ctx.fill();
+    ctx.fillStyle = slowed ? '#889999' : darkenHex('#AA4411', df);
+    ctx.fillRect(-r * 0.4, -r * 0.5 + bodyBob, r * 0.8, r * 0.7);
+
+    // Helmet
+    ctx.fillStyle = armorColor;
+    ctx.fillRect(-r * 0.4, -r * 1.0 + bodyBob, r * 0.8, r * 0.45);
+    ctx.fillStyle = slowed ? '#778899' : darkenHex('#CC3300', df);
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.35 + bodyBob); ctx.lineTo(-r * 0.15, -r * 1.0 + bodyBob); ctx.lineTo(r * 0.15, -r * 1.0 + bodyBob);
+    ctx.closePath(); ctx.fill();
+
+    // Visor slit eyes
+    const exx = Math.cos(facingLeft ? Math.PI - (e.targetAngle || 0) : (e.targetAngle || 0)) * Math.min(r * 0.1, 2);
+    ctx.fillStyle = slowed ? '#88AACC' : '#FF2200';
+    ctx.globalAlpha = 0.9;
+    ctx.fillRect(-r * 0.3 + exx, -r * 0.82 + bodyBob, r * 0.6, r * 0.07);
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = slowed ? '#AACCEE' : '#FFAA00';
+    ctx.fillRect(-r * 0.15 + exx, -r * 0.83 + bodyBob, r * 0.3, r * 0.09);
+
+    ctx.restore();
+}
+
+// --- Boss: Elder Spitter ---
+// Large pear body (like Spitter but 3x) + 3 mouth openings + pustule bumps
+function drawElderSpitter(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const walkPhase = gameTime * (e.speed || 28) * 0.08;
+    const bodyBob = Math.sin(walkPhase * 1.25) * 2;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+    const df = getBossDarkFactor(e);
+    const baseColor = slowed ? '#88BBDD' : darkenHex(e.color || '#66AA22', df);
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Stumpy legs
+    ctx.fillStyle = slowed ? '#668877' : darkenHex('#447711', df);
+    for (let s = -1; s <= 1; s += 2) {
+        const off = Math.sin(walkPhase + s * Math.PI * 0.5) * 2;
+        ctx.beginPath(); ctx.arc(s * r * 0.4 + off, r * 0.75 + bodyBob, r * 0.25, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Pear body — big belly + smaller head
+    ctx.fillStyle = baseColor;
+    ctx.beginPath(); ctx.arc(0, r * 0.15 + bodyBob, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = slowed ? '#99CCBB' : darkenHex('#77BB33', df);
+    ctx.beginPath(); ctx.arc(0, -r * 0.55 + bodyBob, r * 0.55, 0, Math.PI * 2); ctx.fill();
+
+    // Pustule bumps — 6 pulsing circles on body surface
+    ctx.fillStyle = slowed ? '#AACCBB' : darkenHex('#99CC44', df);
+    const pust = [[0.6,0],[-0.55,0.15],[0.3,0.55],[-0.4,0.5],[0.7,0.35],[-0.65,-0.1]];
+    for (let i = 0; i < 6; i++) {
+        const pulse = 1 + Math.sin(gameTime * 4 + i * 1.5) * 0.15;
+        ctx.beginPath();
+        ctx.arc(pust[i][0] * r, pust[i][1] * r + bodyBob, r * 0.1 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 3 mouths with glowing projectile dots
+    const mouthColor = slowed ? '#556655' : darkenHex('#335511', df);
+    const mouths = [[0.3,-0.35],[-0.25,-0.2],[0.05,-0.55]];
+    for (let i = 0; i < 3; i++) {
+        const mx = mouths[i][0] * r, my = mouths[i][1] * r + bodyBob;
+        ctx.fillStyle = mouthColor;
+        ctx.beginPath(); ctx.arc(mx, my, r * 0.14, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.5 + Math.sin(gameTime * 6 + i * 2.1) * 0.3;
+        ctx.fillStyle = slowed ? '#88AAAA' : '#44FF00';
+        ctx.beginPath(); ctx.arc(mx, my, r * 0.07, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Beady eyes
+    const eyeDir = facingLeft ? Math.PI - (e.targetAngle || 0) : (e.targetAngle || 0);
+    const eOff = Math.min(r * 0.15, 3);
+    const ex = Math.cos(eyeDir) * eOff, ey = Math.sin(eyeDir) * eOff;
+    ctx.fillStyle = '#FFFF88';
+    for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath(); ctx.arc(s * r * 0.18 + ex, -r * 0.65 + ey + bodyBob, r * 0.1, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#000';
+    for (let s = -1; s <= 1; s += 2) {
+        ctx.beginPath(); ctx.arc(s * r * 0.18 + ex * 1.3, -r * 0.65 + ey * 1.3 + bodyBob, r * 0.05, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+}
+
 var enemyDrawFns = {
     shambler: drawShambler,
     runner: drawRunner,
@@ -830,6 +1146,10 @@ var enemyDrawFns = {
     spitter: drawSpitter,
     swarmer: drawSwarmer,
     exploder: drawExploder,
+    flesh_colossus: drawFleshColossus,
+    hive_queen: drawHiveQueen,
+    infernal_knight: drawInfernalKnight,
+    elder_spitter: drawElderSpitter,
 };
 
 function drawEnemyBody(e) {
