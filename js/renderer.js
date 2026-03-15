@@ -16,6 +16,18 @@ let ctx;
 let gameTime = 0;
 let _player = null;
 
+// HUD damage ghost tracking
+let prevHP = 100;
+let hpGhostTimer = 0;
+let hpGhostValue = 100;
+
+// Orbital trail tracking (stores last few positions per orbital index)
+const orbitalTrails = new Map();
+
+// Weapon ready flash tracking
+const weaponReadyFlash = [];
+let lastCooldownsHUD = [];
+
 export function initRenderer(context) {
     ctx = context;
 }
@@ -2597,23 +2609,90 @@ function drawEnemyBody(e) {
 
 function drawXPGem(gem) {
     const pulse = 1 + Math.sin(gameTime * 6 + gem.x) * 0.15;
+    // Size by tier: small=1x, medium=1.5x, large=2x
+    const tierScale = gem.tier === 'large' ? 2.0 : gem.tier === 'medium' ? 1.5 : 1.0;
     const r = gem.radius * pulse;
 
-    drawGlow(ctx, gem.x, gem.y, r * 2.5, gem.color, 0.15);
+    // Magnetized motion trail (only when actively being pulled)
+    if (gem.magnetted) {
+        const speed = Math.sqrt(gem.vx * gem.vx + gem.vy * gem.vy);
+        if (speed > 50) {
+            const nx = -gem.vx / speed;
+            const ny = -gem.vy / speed;
+            for (let t = 1; t <= 3; t++) {
+                const alpha = 0.25 - t * 0.07;
+                const ox = gem.x + nx * t * r * 1.2;
+                const oy = gem.y + ny * t * r * 1.2;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = gem.color;
+                ctx.beginPath();
+                ctx.arc(ox, oy, r * (1 - t * 0.2), 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+        }
+    }
 
+    // Pulsing glow aura — brighter and larger for bigger gems
+    const glowAlpha = 0.15 + Math.sin(gameTime * 4 + gem.y) * 0.08;
+    const glowSize = r * (2.5 + tierScale * 0.5);
+    drawGlow(ctx, gem.x, gem.y, glowSize, gem.color, glowAlpha);
+
+    // 8-pointed star gem shape
+    const points = 8;
+    const outerR = r;
+    const innerR = r * 0.5;
     ctx.fillStyle = gem.color;
     ctx.beginPath();
-    ctx.moveTo(gem.x, gem.y - r);
-    ctx.lineTo(gem.x + r * 0.7, gem.y);
-    ctx.lineTo(gem.x, gem.y + r);
-    ctx.lineTo(gem.x - r * 0.7, gem.y);
+    for (let i = 0; i < points * 2; i++) {
+        const angle = (i * Math.PI) / points - Math.PI / 2;
+        const rad = i % 2 === 0 ? outerR : innerR;
+        const px = gem.x + Math.cos(angle) * rad;
+        const py = gem.y + Math.sin(angle) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#FFFFFF';
-    ctx.globalAlpha = 0.5;
+    // Inner facet refraction lines
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 0.5;
+    // Facet line 1: top-left to center-right
     ctx.beginPath();
-    ctx.arc(gem.x - 1, gem.y - 2, r * 0.25, 0, Math.PI * 2);
+    ctx.moveTo(gem.x - r * 0.3, gem.y - r * 0.4);
+    ctx.lineTo(gem.x + r * 0.2, gem.y + r * 0.1);
+    ctx.stroke();
+    // Facet line 2: top-right to center-left
+    ctx.beginPath();
+    ctx.moveTo(gem.x + r * 0.3, gem.y - r * 0.3);
+    ctx.lineTo(gem.x - r * 0.15, gem.y + r * 0.2);
+    ctx.stroke();
+    // Facet line 3: horizontal through center
+    ctx.beginPath();
+    ctx.moveTo(gem.x - r * 0.35, gem.y);
+    ctx.lineTo(gem.x + r * 0.35, gem.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    // Bright highlight dot
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(gem.x - r * 0.15, gem.y - r * 0.25, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // Orbiting sparkle particle
+    const sparkleAngle = gameTime * 2.0 + gem.x * 0.1;
+    const sparkleR = r * 1.3;
+    const sx = gem.x + Math.cos(sparkleAngle) * sparkleR;
+    const sy = gem.y + Math.sin(sparkleAngle) * sparkleR;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.6 + Math.sin(gameTime * 8) * 0.3;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 1.0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
 }
@@ -3177,20 +3256,74 @@ function drawSweepArc(sweep) {
 }
 
 function drawOrbital(orb) {
-    // Glow
-    drawGlow(ctx, orb.x, orb.y, orb.radius * 2.5, orb.color, 0.3);
+    const r = orb.radius;
+    const orbKey = orb.index !== undefined ? orb.index : 0;
 
-    // Core
+    // Update trail buffer
+    if (!orbitalTrails.has(orbKey)) {
+        orbitalTrails.set(orbKey, []);
+    }
+    const trail = orbitalTrails.get(orbKey);
+    trail.push({ x: orb.x, y: orb.y });
+    if (trail.length > 6) trail.shift();
+
+    // Energy trail: fading arc from previous positions
+    for (let i = 0; i < trail.length - 1; i++) {
+        const t = i / trail.length;
+        ctx.globalAlpha = t * 0.2;
+        ctx.fillStyle = orb.color;
+        ctx.beginPath();
+        ctx.arc(trail[i].x, trail[i].y, r * (0.3 + t * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Outer glow
+    drawGlow(ctx, orb.x, orb.y, r * 3, orb.color, 0.25);
+
+    // Outer corona: small triangular spikes rotating around the edge
+    const coronaSpikes = 10;
+    const coronaRotation = gameTime * 3 + orbKey * 1.5;
+    ctx.fillStyle = orb.color;
+    ctx.globalAlpha = 0.3;
+    for (let i = 0; i < coronaSpikes; i++) {
+        const angle = coronaRotation + (i / coronaSpikes) * Math.PI * 2;
+        const tipR = r * 1.5;
+        const baseHalf = Math.PI / coronaSpikes * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(orb.x + Math.cos(angle) * tipR, orb.y + Math.sin(angle) * tipR);
+        ctx.lineTo(orb.x + Math.cos(angle - baseHalf) * r, orb.y + Math.sin(angle - baseHalf) * r);
+        ctx.lineTo(orb.x + Math.cos(angle + baseHalf) * r, orb.y + Math.sin(angle + baseHalf) * r);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Core sphere
     ctx.fillStyle = orb.color;
     ctx.beginPath();
-    ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+    ctx.arc(orb.x, orb.y, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // Shine
+    // Internal rotating ring lines (3 orbital rings at different tilts)
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.4;
+    for (let ring = 0; ring < 3; ring++) {
+        const ringAngle = gameTime * (2 + ring * 0.7) + ring * 2.1;
+        const tilt = 0.3 + ring * 0.25;
+        ctx.beginPath();
+        ctx.ellipse(orb.x, orb.y, r * 0.85, r * tilt, ringAngle, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Pulsing bright core
+    const corePulse = 0.25 + Math.sin(gameTime * 5 + orbKey) * 0.1;
     ctx.fillStyle = '#FFFFFF';
-    ctx.globalAlpha = 0.6;
+    ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.arc(orb.x - 2, orb.y - 2, orb.radius * 0.3, 0, Math.PI * 2);
+    ctx.arc(orb.x, orb.y, r * corePulse, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
 }
@@ -3200,28 +3333,100 @@ function drawOrbital(orb) {
 function drawHUD(player, state) {
     if (!player) return;
 
+    const dt = 1 / 60;
     const cooldowns = getCooldowns();
 
     // === HP Bar (top left) ===
     const hpRatio = player.health / player.maxHealth;
-    const r = Math.floor(255 * (1 - hpRatio));
-    const g = Math.floor(200 * hpRatio);
 
-    // HP bar background
+    // Track HP ghost for damage animation
+    if (player.health < prevHP) {
+        hpGhostValue = prevHP / player.maxHealth;
+        hpGhostTimer = 0.5;
+    }
+    prevHP = player.health;
+    if (hpGhostTimer > 0) hpGhostTimer -= dt;
+
+    const hpBarX = 9;
+    const hpBarY = 9;
+    const hpBarW = 162;
+    const hpBarH = 14;
+
+    // Drop shadow
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.4;
+    drawHUDRoundRect(ctx, hpBarX + 1, hpBarY + 1, hpBarW, hpBarH, 4);
+    ctx.globalAlpha = 1.0;
+
+    // Background
     ctx.fillStyle = '#111';
-    ctx.fillRect(9, 9, 162, 14);
-    // HP bar fill
-    ctx.fillStyle = `rgb(${r},${g},50)`;
-    ctx.fillRect(10, 10, 160 * hpRatio, 12);
-    // HP bar border
-    ctx.strokeStyle = '#444';
+    drawHUDRoundRect(ctx, hpBarX, hpBarY, hpBarW, hpBarH, 4);
+
+    // Damage ghost bar (red, decaying)
+    if (hpGhostTimer > 0) {
+        ctx.fillStyle = '#CC2222';
+        ctx.globalAlpha = hpGhostTimer / 0.5 * 0.7;
+        drawHUDRoundRectClipped(ctx, hpBarX + 1, hpBarY + 1, (hpBarW - 2) * hpGhostValue, hpBarH - 2, 3);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // HP gradient fill
+    const hpGrad = ctx.createLinearGradient(hpBarX, 0, hpBarX + hpBarW * hpRatio, 0);
+    if (hpRatio > 0.5) {
+        hpGrad.addColorStop(0, '#44CC44');
+        hpGrad.addColorStop(1, '#66EE66');
+    } else if (hpRatio > 0.25) {
+        hpGrad.addColorStop(0, '#CCAA22');
+        hpGrad.addColorStop(1, '#EECC44');
+    } else {
+        hpGrad.addColorStop(0, '#CC2222');
+        hpGrad.addColorStop(1, '#EE4444');
+    }
+    ctx.fillStyle = hpGrad;
+    if (hpRatio > 0) {
+        drawHUDRoundRectClipped(ctx, hpBarX + 1, hpBarY + 1, (hpBarW - 2) * hpRatio, hpBarH - 2, 3);
+    }
+
+    // Inner shine line
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.3;
     ctx.lineWidth = 1;
-    ctx.strokeRect(9, 9, 162, 14);
+    ctx.beginPath();
+    ctx.moveTo(hpBarX + 4, hpBarY + 3);
+    ctx.lineTo(hpBarX + hpBarW - 4, hpBarY + 3);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    // Segment lines every 10%
+    ctx.strokeStyle = '#000000';
+    ctx.globalAlpha = 0.15;
+    ctx.lineWidth = 1;
+    for (let s = 1; s < 10; s++) {
+        const sx = hpBarX + 1 + (hpBarW - 2) * (s / 10);
+        ctx.beginPath();
+        ctx.moveTo(sx, hpBarY + 1);
+        ctx.lineTo(sx, hpBarY + hpBarH - 1);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Border
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    drawHUDRoundRectStroke(ctx, hpBarX, hpBarY, hpBarW, hpBarH, 4);
+
+    // HP cross icon
+    ctx.fillStyle = '#FF4444';
+    const crossX = hpBarX + 7;
+    const crossY = hpBarY + hpBarH / 2;
+    ctx.fillRect(crossX - 3, crossY - 1, 6, 2);
+    ctx.fillRect(crossX - 1, crossY - 3, 2, 6);
+
     // HP text
     ctx.fillStyle = '#fff';
     ctx.font = '10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`HP: ${Math.ceil(player.health)} / ${player.maxHealth}`, 14, 19);
+    ctx.fillText(`${Math.ceil(player.health)} / ${player.maxHealth}`, hpBarX + 14, hpBarY + 11);
 
     // === Weapon slots (top left, below HP) ===
     let wy = 30;
@@ -3230,38 +3435,78 @@ function drawHUD(player, state) {
         const def = WEAPONS[weapon.id] || EVOLUTIONS[weapon.id];
         const maxLvl = 8;
         const isMaxed = weapon.level >= maxLvl;
+        const isEvolved = !!EVOLUTIONS[weapon.id];
         const stats = getWeaponStats(weapon.id, weapon.level);
+        const weapColor = def ? def.color : '#AAAAAA';
 
-        // Cooldown bar background
         const barX = 10;
         const barW = 160;
         const barH = 10;
+
+        // Background
         ctx.fillStyle = '#111';
         ctx.fillRect(barX, wy, barW, barH);
 
-        // Cooldown fill
+        // Cooldown fill with bright leading edge
         const cd = cooldowns[i] || 0;
+        const prevCd = lastCooldownsHUD[i] || 0;
+        let cdRatio = 1;
         if (stats && stats.cooldown > 0) {
-            const cdRatio = Math.max(0, 1 - (cd / stats.cooldown));
-            const cdColor = cdRatio >= 1 ? '#336633' : '#222233';
-            ctx.fillStyle = cdColor;
-            ctx.fillRect(barX, wy, barW * cdRatio, barH);
-        } else {
-            ctx.fillStyle = '#336633';
-            ctx.fillRect(barX, wy, barW, barH);
+            cdRatio = Math.max(0, 1 - (cd / stats.cooldown));
         }
 
-        // Border
-        ctx.strokeStyle = isMaxed ? '#FFD700' : '#333';
-        ctx.lineWidth = 1;
+        // Detect weapon becoming ready (cooldown just hit 0)
+        if (cdRatio >= 1 && prevCd > 0 && prevCd < 1) {
+            weaponReadyFlash[i] = 0.3;
+        }
+        if (weaponReadyFlash[i] > 0) weaponReadyFlash[i] -= dt;
+        lastCooldownsHUD[i] = cdRatio;
+
+        const cdColor = cdRatio >= 1 ? '#336633' : '#222233';
+        ctx.fillStyle = cdColor;
+        const fillW = barW * cdRatio;
+        ctx.fillRect(barX, wy, fillW, barH);
+
+        // Bright leading edge on cooldown fill
+        if (cdRatio > 0 && cdRatio < 1) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.globalAlpha = 0.4;
+            ctx.fillRect(barX + fillW - 1, wy, 2, barH);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Ready flash pulse
+        if (weaponReadyFlash[i] > 0) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.globalAlpha = weaponReadyFlash[i] / 0.3 * 0.35;
+            ctx.fillRect(barX, wy, barW, barH);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Border — golden shimmer for evolved weapons
+        if (isEvolved) {
+            const shimmer = 0.5 + Math.sin(gameTime * 4 + i) * 0.3;
+            ctx.strokeStyle = `rgba(255, 215, 0, ${shimmer})`;
+            ctx.lineWidth = 1.5;
+        } else {
+            ctx.strokeStyle = isMaxed ? '#FFD700' : '#333';
+            ctx.lineWidth = 1;
+        }
         ctx.strokeRect(barX, wy, barW, barH);
 
-        // Weapon name + pips
+        // Weapon color pip (small square before name)
+        ctx.fillStyle = weapColor;
+        ctx.fillRect(barX + 2, wy + 2, 5, 6);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(barX + 2, wy + 2, 5, 6);
+
+        // Weapon name
         ctx.font = '9px monospace';
         ctx.textAlign = 'left';
         ctx.fillStyle = isMaxed ? '#FFD700' : '#aaa';
         const displayName = def ? def.name : weapon.id;
-        ctx.fillText(displayName, barX + 3, wy + 8);
+        ctx.fillText(displayName, barX + 10, wy + 8);
 
         // Level pips on the right side
         const pipStr = '\u25A0'.repeat(weapon.level) + '\u25A1'.repeat(maxLvl - weapon.level);
@@ -3278,26 +3523,35 @@ function drawHUD(player, state) {
         wy += 4;
         let px = 10;
         for (const passive of player.passives) {
-            const def = PASSIVES[passive.id];
+            const pDef = PASSIVES[passive.id];
             const maxLvl = 5;
 
-            // Background box
-            ctx.fillStyle = '#111';
-            ctx.fillRect(px, wy, 28, 22);
-            ctx.strokeStyle = '#333';
+            // Background gradient box with rounded corners
+            const grad = ctx.createLinearGradient(px, wy, px, wy + 22);
+            grad.addColorStop(0, '#1a1a2a');
+            grad.addColorStop(1, '#111118');
+            ctx.fillStyle = grad;
+            drawHUDRoundRect(ctx, px, wy, 28, 22, 3);
+
+            ctx.strokeStyle = '#444';
             ctx.lineWidth = 1;
-            ctx.strokeRect(px, wy, 28, 22);
+            drawHUDRoundRectStroke(ctx, px, wy, 28, 22, 3);
 
             // Icon
+            ctx.fillStyle = '#FFFFFF';
             ctx.font = '12px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText(def ? def.icon : '?', px + 14, wy + 12);
+            ctx.fillText(pDef ? pDef.icon : '?', px + 14, wy + 13);
 
-            // Level dots below icon
-            ctx.font = '7px monospace';
-            ctx.fillStyle = '#88AAFF';
-            const dots = '\u25CF'.repeat(passive.level) + '\u25CB'.repeat(maxLvl - passive.level);
-            ctx.fillText(dots, px + 14, wy + 20);
+            // Level pips as colored arcs
+            for (let lvl = 0; lvl < maxLvl; lvl++) {
+                const pipX = px + 4 + lvl * 5;
+                const pipY = wy + 19;
+                ctx.fillStyle = lvl < passive.level ? '#88AAFF' : '#333';
+                ctx.beginPath();
+                ctx.arc(pipX, pipY, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
 
             px += 31;
         }
@@ -3305,51 +3559,259 @@ function drawHUD(player, state) {
 
     // === XP bar (bottom, full width) ===
     const xpRatio = player.xp / player.xpToNext;
+    const xpY = CANVAS_HEIGHT - 16;
+
+    // Background
     ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16);
-    ctx.fillStyle = '#44FF88';
-    ctx.fillRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH * xpRatio, 16);
+    ctx.fillRect(0, xpY, CANVAS_WIDTH, 16);
+
+    // Gradient fill
+    if (xpRatio > 0) {
+        const xpGrad = ctx.createLinearGradient(0, 0, CANVAS_WIDTH * xpRatio, 0);
+        xpGrad.addColorStop(0, '#1a6633');
+        xpGrad.addColorStop(1, '#44FF88');
+        ctx.fillStyle = xpGrad;
+        ctx.fillRect(0, xpY, CANVAS_WIDTH * xpRatio, 16);
+    }
+
+    // Shine sweep animation (diagonal bright band every 3 seconds)
+    const sweepPeriod = 3.0;
+    const sweepT = (gameTime % sweepPeriod) / sweepPeriod;
+    const sweepX = sweepT * (CANVAS_WIDTH + 60) - 30;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, xpY, CANVAS_WIDTH * xpRatio, 16);
+    ctx.clip();
+    const sheenGrad = ctx.createLinearGradient(sweepX - 20, 0, sweepX + 20, 0);
+    sheenGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    sheenGrad.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+    sheenGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheenGrad;
+    ctx.fillRect(sweepX - 20, xpY, 40, 16);
+    ctx.restore();
+
+    // Segment marks every 25%
+    ctx.strokeStyle = '#000000';
+    ctx.globalAlpha = 0.2;
+    ctx.lineWidth = 1;
+    for (let s = 1; s < 4; s++) {
+        const markX = CANVAS_WIDTH * (s / 4);
+        ctx.beginPath();
+        ctx.moveTo(markX, xpY);
+        ctx.lineTo(markX, xpY + 16);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Border
     ctx.strokeStyle = '#333';
     ctx.lineWidth = 1;
-    ctx.strokeRect(0, CANVAS_HEIGHT - 16, CANVAS_WIDTH, 16);
-    ctx.fillStyle = '#fff';
-    ctx.font = '11px monospace';
+    ctx.strokeRect(0, xpY, CANVAS_WIDTH, 16);
+
+    // Level number (larger, bold) + XP text
+    ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Lv ${player.level}  \u2014  ${player.xp} / ${player.xpToNext} XP`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 4);
+    // Shadow text
+    ctx.fillStyle = '#000';
+    ctx.fillText(`Lv ${player.level}`, CANVAS_WIDTH / 2 + 1, xpY + 12 + 1);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`Lv ${player.level}`, CANVAS_WIDTH / 2, xpY + 12);
+    // XP text smaller beside it
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`${player.xp} / ${player.xpToNext} XP`, CANVAS_WIDTH / 2 + 50, xpY + 11);
 
     // === Kill count + Gold (top right) ===
     ctx.font = '13px monospace';
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#ccc';
-    ctx.fillText(`Kills: ${player.killCount}`, CANVAS_WIDTH - 10, 22);
 
+    // Skull icon for kills
+    const killX = CANVAS_WIDTH - 10;
+    const killY = 22;
+    // Shadow text
+    ctx.fillStyle = '#000';
+    ctx.fillText(`${player.killCount}`, killX + 1, killY + 1);
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`${player.killCount}`, killX, killY);
+    // Mini skull icon
+    drawMiniSkull(ctx, killX - ctx.measureText(`${player.killCount}`).width - 10, killY - 4);
+
+    // Gold with coin icon
+    const goldStr = `${getGold()}`;
+    // Shadow text
+    ctx.fillStyle = '#000';
+    ctx.fillText(goldStr, killX + 1, 38 + 1);
     ctx.fillStyle = '#FFD700';
-    ctx.fillText(`\u2B50 ${getGold()}`, CANVAS_WIDTH - 10, 38);
+    ctx.fillText(goldStr, killX, 38);
+    // Mini coin icon
+    drawMiniCoin(ctx, killX - ctx.measureText(goldStr).width - 10, 34);
 
     ctx.textAlign = 'left';
+}
+
+// HUD helper: filled rounded rect
+function drawHUDRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// HUD helper: stroked rounded rect
+function drawHUDRoundRectStroke(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.stroke();
+}
+
+// HUD helper: clipped rounded rect fill (for HP bar fill)
+function drawHUDRoundRectClipped(ctx, x, y, w, h, r) {
+    if (w <= 0) return;
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+}
+
+// Mini skull icon for kill count
+function drawMiniSkull(ctx, x, y) {
+    ctx.fillStyle = '#aaa';
+    // Cranium
+    ctx.beginPath();
+    ctx.arc(x + 4, y + 3, 4, Math.PI, 0);
+    ctx.lineTo(x + 8, y + 6);
+    ctx.lineTo(x, y + 6);
+    ctx.closePath();
+    ctx.fill();
+    // Jaw
+    ctx.fillRect(x + 1, y + 6, 6, 2);
+    // Eyes
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(x + 2.5, y + 4, 1, 0, Math.PI * 2);
+    ctx.arc(x + 5.5, y + 4, 1, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+// Mini coin icon for gold
+function drawMiniCoin(ctx, x, y) {
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(x + 4, y + 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#CC9900';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(x + 4, y + 4, 4, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner line
+    ctx.strokeStyle = '#FFEE88';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.arc(x + 4, y + 4, 2, 0, Math.PI * 2);
+    ctx.stroke();
 }
 
 // --- Crosshair ---
 
 export function drawCrosshair(ctx) {
     const mouse = getMouse();
-    const size = 10;
+
+    // Scale crosshair based on primary weapon type
+    let gap = 4;
+    let size = 10;
+    if (_player && _player.weapons && _player.weapons.length > 0) {
+        const primId = _player.weapons[0].id;
+        const resolved = EVOLUTION_TO_BASE[primId] || primId;
+        if (resolved === 'shotgun') { gap = 6; size = 14; }
+        else if (resolved === 'pistol' || resolved === 'smg') { gap = 3; size = 8; }
+        else if (resolved === 'rocket') { gap = 5; size = 12; }
+    }
+
+    // Weapon color for center dot
+    let dotColor = '#FF4444';
+    if (_player && _player.weapons && _player.weapons.length > 0) {
+        const wDef = WEAPONS[_player.weapons[0].id] || EVOLUTIONS[_player.weapons[0].id];
+        if (wDef && wDef.color) dotColor = wDef.color;
+    }
+
+    // Subtle rotation animation
+    const rot = gameTime * 0.5;
+
+    ctx.save();
+    ctx.translate(mouse.x, mouse.y);
+
+    // Outer ring (thin circle)
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, size + 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 4 tactical lines with gap (rotating)
+    ctx.globalAlpha = 0.7;
     ctx.strokeStyle = '#FFFFFF';
     ctx.lineWidth = 1.5;
-    ctx.globalAlpha = 0.7;
+    ctx.rotate(rot);
     ctx.beginPath();
-    ctx.moveTo(mouse.x - size, mouse.y);
-    ctx.lineTo(mouse.x - 4, mouse.y);
-    ctx.moveTo(mouse.x + 4, mouse.y);
-    ctx.lineTo(mouse.x + size, mouse.y);
-    ctx.moveTo(mouse.x, mouse.y - size);
-    ctx.lineTo(mouse.x, mouse.y - 4);
-    ctx.moveTo(mouse.x, mouse.y + 4);
-    ctx.lineTo(mouse.x, mouse.y + size);
+    for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        ctx.moveTo(cos * gap, sin * gap);
+        ctx.lineTo(cos * size, sin * size);
+    }
     ctx.stroke();
-    ctx.fillStyle = '#FF4444';
+
+    // Small tick marks at 45-degree angles (also rotating)
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.4;
     ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, 1.5, 0, Math.PI * 2);
+    for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2 + Math.PI / 4;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        ctx.moveTo(cos * (size - 2), sin * (size - 2));
+        ctx.lineTo(cos * (size + 1), sin * (size + 1));
+    }
+    ctx.stroke();
+
+    ctx.rotate(-rot); // undo rotation for center dot
+
+    // Center dot
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = dotColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
     ctx.globalAlpha = 1.0;
 }
