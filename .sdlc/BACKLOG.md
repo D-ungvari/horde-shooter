@@ -6,7 +6,6 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Up Next
 
 ### Phase 1: Juice & Impact
-- [ ] **001 — Hit flash system** — White overlay on enemies for 2 frames when damaged
 - [ ] **002 — Hit knockback system** — Per-weapon knockback values, crowd-push physics
 - [ ] **003 — Kill hit-stop** — 15-30ms game freeze on kills (not hits)
 - [ ] **004 — Kill death-pop animation** — Scale up to 1.3x then shrink to 0 on death
@@ -72,4 +71,4 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 (nothing)
 
 ## Completed
-(nothing yet)
+- [x] **001 — Hit flash system** — White overlay on enemies for ~3 frames when damaged (4130059)

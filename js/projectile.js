@@ -34,6 +34,9 @@ function createProjectileObj() {
         freezeDotDamage: 0,
         freezeDotTick: 0,
         freezeDotTimer: 0,
+        // Knockback
+        knockbackDist: 0,
+        knockbackSpeed: 0,
     };
 }
 
@@ -78,6 +81,9 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     p.freezeDotDamage = opts.freezeDotDamage || 0;
     p.freezeDotTick = opts.freezeDotTick || 0;
     p.freezeDotTimer = 0;
+    // Knockback
+    p.knockbackDist = opts.knockbackDist || 0;
+    p.knockbackSpeed = opts.knockbackSpeed || 0;
     return p;
 }
 

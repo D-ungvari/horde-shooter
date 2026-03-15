@@ -1,7 +1,7 @@
 import { getWeaponStats } from './weaponData.js';
 import { spawnProjectile } from './projectile.js';
 import { getMouseWorld } from './input.js';
-import { getEnemyPool } from './enemy.js';
+import { getEnemyPool, applyKnockback } from './enemy.js';
 import { HIT_FLASH_DURATION } from './constants.js';
 import { v2Normalize, v2FromAngle, v2Dist, v2Sub, angleBetween, randomRange } from './utils.js';
 import { playShoot, playShotgun, playSmg, playRocket, playLightning, playFlame, playFrostNova } from './audio.js';
@@ -127,6 +127,8 @@ function fireAimedSingle(player, stats, mouseWorld, damage, pierce, lifetime) {
                 lifetime,
                 color: stats.color,
                 aoeRadius: stats.aoeRadius || 0,
+                knockbackDist: stats.knockbackDist || 0,
+                knockbackSpeed: stats.knockbackSpeed || 0,
             }
         );
     }
@@ -154,6 +156,8 @@ function fireAimedSpread(player, stats, mouseWorld, damage, pierce, lifetime) {
                 lifetime,
                 color: stats.color,
                 aoeRadius: stats.aoeRadius || 0,
+                knockbackDist: stats.knockbackDist || 0,
+                knockbackSpeed: stats.knockbackSpeed || 0,
             }
         );
     }
@@ -180,6 +184,8 @@ function fireAimedCone(player, stats, mouseWorld, damage, pierce, lifetime) {
                 lifetime: lifetime * randomRange(0.7, 1.3),
                 color: stats.color,
                 type: 'flame',
+                knockbackDist: stats.knockbackDist || 0,
+                knockbackSpeed: stats.knockbackSpeed || 0,
             }
         );
     }
@@ -353,6 +359,8 @@ function fireAutoBoomerang(player, stats, damage, lifetime) {
             ownerY: player.y,
             bounceCount: 0,
             maxBounces: isChakram ? 5 : 0,
+            knockbackDist: stats.knockbackDist || 0,
+            knockbackSpeed: stats.knockbackSpeed || 0,
         }
     );
     return true;
@@ -385,6 +393,10 @@ function updateOrbitals(player, stats, slotIndex, dt) {
             if (dist < radSum * radSum) {
                 e.health -= damage * dt * 3; // DPS-based damage
                 e.hitFlashTimer = HIT_FLASH_DURATION;
+                // Only apply knockback if not already being knocked back (avoid continuous jitter)
+                if (e.knockbackTimer <= 0 && (stats.knockbackDist || 0) > 0) {
+                    applyKnockback(e, ox, oy, stats.knockbackDist, stats.knockbackSpeed);
+                }
             }
         });
     }
@@ -406,6 +418,9 @@ function updateOrbitals(player, stats, slotIndex, dt) {
                 if (dx * dx + dy * dy < pulseRadius * pulseRadius) {
                     e.health -= pulseDmg;
                     e.hitFlashTimer = HIT_FLASH_DURATION;
+                    if ((stats.knockbackDist || 0) > 0) {
+                        applyKnockback(e, player.x, player.y, stats.knockbackDist, stats.knockbackSpeed);
+                    }
                 }
             });
 
@@ -508,6 +523,9 @@ function fireAutoBurst(player, stats, damage) {
         if (dx * dx + dy * dy < burstRadius * burstRadius) {
             e.health -= damage;
             e.hitFlashTimer = HIT_FLASH_DURATION;
+            if ((stats.knockbackDist || 0) > 0) {
+                applyKnockback(e, player.x, player.y, stats.knockbackDist, stats.knockbackSpeed);
+            }
             e.slowTimer = slowDuration;
             e.slowFactor = slowFactor;
         }

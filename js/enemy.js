@@ -2,6 +2,7 @@ import { createPool } from './objectPool.js';
 import { MAX_ENEMIES } from './constants.js';
 import { ENEMIES, BOSSES, getScaledStats, getScaledBossStats } from './enemyData.js';
 import { spawnProjectile } from './projectile.js';
+import { queryHash } from './physics.js';
 import { angleBetween, v2FromAngle, v2Dist, randomRange } from './utils.js';
 
 function createEnemyObj() {
@@ -35,6 +36,11 @@ function createEnemyObj() {
         slowFactor: 1,
         // Hit feedback
         hitFlashTimer: 0,
+        // Knockback
+        knockbackVx: 0,
+        knockbackVy: 0,
+        knockbackTimer: 0,
+        knockbackResist: 0,
         // Exploder
         explosionRadius: 0,
         explosionDamage: 0,
@@ -105,6 +111,11 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.chargeTimer = 0;
     e.pulseTimer = 0;
     e.hitFlashTimer = 0;
+    e.knockbackVx = 0;
+    e.knockbackVy = 0;
+    e.knockbackTimer = 0;
+    e.knockbackResist = stats.knockbackResist || 0;
+    if (elite) e.knockbackResist = Math.min(0.95, e.knockbackResist + 0.3);
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -136,6 +147,10 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
     e.targetAngle = 0;
     e.sinePhase = 0;
     e.hitFlashTimer = 0;
+    e.knockbackVx = 0;
+    e.knockbackVy = 0;
+    e.knockbackTimer = 0;
+    e.knockbackResist = stats.knockbackResist || 0;
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -172,6 +187,16 @@ export function updateEnemies(player, dt) {
     pool.forEach(e => {
         // Update hit flash
         if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
+
+        // Update knockback — skip AI while being knocked back
+        if (e.knockbackTimer > 0) {
+            e.x += e.knockbackVx * dt;
+            e.y += e.knockbackVy * dt;
+            e.knockbackVx *= 0.9;
+            e.knockbackVy *= 0.9;
+            e.knockbackTimer -= dt;
+            return; // stunned during knockback
+        }
 
         // Update slow
         if (e.slowTimer > 0) {
@@ -477,6 +502,47 @@ export function triggerExplosion(e, player) {
         return e.explosionDamage;
     }
     return 0;
+}
+
+export function applyKnockback(enemy, sourceX, sourceY, knockbackDist, knockbackSpeed) {
+    if (knockbackDist <= 0 || knockbackSpeed <= 0) return;
+    const resist = enemy.knockbackResist || 0;
+    const effectiveDist = knockbackDist * (1 - resist);
+    const effectiveSpeed = knockbackSpeed * (1 - resist);
+    if (effectiveDist < 1) return;
+
+    const angle = Math.atan2(enemy.y - sourceY, enemy.x - sourceX);
+    const newTimer = effectiveDist / effectiveSpeed;
+
+    // Take the stronger knockback if already being knocked back
+    if (enemy.knockbackTimer > 0) {
+        const curSpeed = Math.sqrt(enemy.knockbackVx * enemy.knockbackVx + enemy.knockbackVy * enemy.knockbackVy);
+        if (effectiveSpeed <= curSpeed) return;
+    }
+
+    enemy.knockbackVx = Math.cos(angle) * effectiveSpeed;
+    enemy.knockbackVy = Math.sin(angle) * effectiveSpeed;
+    enemy.knockbackTimer = newTimer;
+}
+
+export function applyCrowdPush() {
+    pool.forEach(e => {
+        if (e.knockbackTimer <= 0) return;
+        const nearby = queryHash(e.x, e.y, e.radius * 2.5);
+        for (const n of nearby) {
+            if (n === e || !n.active) continue;
+            const dx = n.x - e.x;
+            const dy = n.y - e.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const overlap = (e.radius + n.radius) - dist;
+            if (overlap > 0) {
+                const pushX = (dx / dist) * overlap * 0.3;
+                const pushY = (dy / dist) * overlap * 0.3;
+                n.x += pushX;
+                n.y += pushY;
+            }
+        }
+    });
 }
 
 export function releaseEnemy(e) {

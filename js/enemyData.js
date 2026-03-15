@@ -11,6 +11,7 @@ export const ENEMIES = {
         xpValue: 2,
         color: '#44AA44',
         ai: 'chase',
+        knockbackResist: 0,
     },
     runner: {
         id: 'runner',
@@ -22,6 +23,7 @@ export const ENEMIES = {
         xpValue: 1,
         color: '#FF4444',
         ai: 'chase',
+        knockbackResist: 0.1,
     },
     bat: {
         id: 'bat',
@@ -33,6 +35,7 @@ export const ENEMIES = {
         xpValue: 1,
         color: '#AA44CC',
         ai: 'sine_chase',
+        knockbackResist: 0,
     },
     brute: {
         id: 'brute',
@@ -44,6 +47,7 @@ export const ENEMIES = {
         xpValue: 8,
         color: '#FF8800',
         ai: 'chase',
+        knockbackResist: 0.7,
     },
     spitter: {
         id: 'spitter',
@@ -58,6 +62,7 @@ export const ENEMIES = {
         attackRange: 250,
         attackCooldown: 2.0,
         projectileSpeed: 200,
+        knockbackResist: 0.2,
     },
     swarmer: {
         id: 'swarmer',
@@ -69,6 +74,7 @@ export const ENEMIES = {
         xpValue: 1,
         color: '#333344',
         ai: 'swarm',
+        knockbackResist: 0,
     },
     exploder: {
         id: 'exploder',
@@ -82,6 +88,7 @@ export const ENEMIES = {
         ai: 'charge_explode',
         explosionRadius: 60,
         explosionDamage: 25,
+        knockbackResist: 0,
     },
 };
 
@@ -98,6 +105,7 @@ export const BOSSES = {
         color: '#CC6633',
         ai: 'boss_colossus',
         isBoss: true,
+        knockbackResist: 0.9,
         // Slam attack: AoE shockwave + spawn shamblers
         slamCooldown: 5.0,
         slamRadius: 120,
@@ -116,6 +124,7 @@ export const BOSSES = {
         color: '#8844AA',
         ai: 'boss_queen',
         isBoss: true,
+        knockbackResist: 0.9,
         // Spawns swarmer packs, poison trail, teleports
         spawnCooldown: 3.0,
         spawnType: 'swarmer',
@@ -134,6 +143,7 @@ export const BOSSES = {
         color: '#FF4400',
         ai: 'boss_knight',
         isBoss: true,
+        knockbackResist: 0.9,
         // Fast charge + pause pattern, fire trail
         chargeCooldown: 4.0,
         chargeSpeed: 250,
@@ -150,6 +160,7 @@ export const BOSSES = {
         color: '#66AA22',
         ai: 'boss_elder',
         isBoss: true,
+        knockbackResist: 0.9,
         // Triple-shot spread, spawns bats
         attackRange: 350,
         attackCooldown: 1.5,

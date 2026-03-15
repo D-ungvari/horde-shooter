@@ -4,12 +4,13 @@
 TEST — verifying implementation
 
 ## Current Work Item
-**001 — Hit flash system** — White overlay on enemies for 2 frames when damaged
+**002 — Hit knockback system** — Per-weapon knockback values, crowd-push physics
 
 ## Context for Next Session
-- All 7 steps implemented across 5 files
-- constants.js: HIT_FLASH_DURATION = 0.033
-- enemy.js: hitFlashTimer property, reset on spawn, decrement in update
-- game.js: trigger flash on projectile damage
-- weapons.js: trigger flash on lightning, orbital, guardian ring, frost nova damage
-- renderer.js: white circle overlay when hitFlashTimer > 0
+- All steps implemented across 6 files
+- weaponData.js: knockbackDist/knockbackSpeed on all 20 weapon definitions
+- enemyData.js: knockbackResist on all 7 enemy types + 4 bosses
+- enemy.js: knockback state, applyKnockback(), applyCrowdPush(), stun during knockback
+- projectile.js: knockbackDist/knockbackSpeed fields
+- game.js: apply knockback on projectile hit, call applyCrowdPush after spatial hash
+- weapons.js: pass knockback to projectiles, apply on orbitals/guardian ring/frost nova

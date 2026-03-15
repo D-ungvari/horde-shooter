@@ -5,7 +5,7 @@ import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
 import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions, spawnPlagueSpread } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
-import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion } from './enemy.js';
+import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion, applyKnockback, applyCrowdPush } from './enemy.js';
 import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
@@ -305,6 +305,9 @@ function update(dt) {
         insertIntoHash(e);
     });
 
+    // Crowd-push (knocked-back enemies push neighbors)
+    applyCrowdPush();
+
     // Player projectile vs Enemy collisions
     projectilePool.forEach(p => {
         // Skip enemy projectiles — they hit the player, not enemies
@@ -321,6 +324,11 @@ function update(dt) {
                 e.health -= p.damage;
                 e.hitFlashTimer = HIT_FLASH_DURATION;
                 p.hitSet.add(e._poolIndex);
+
+                // Knockback (skip for DOT zones — they tick, not impact)
+                if (p.knockbackDist > 0 && p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone' && p.type !== 'zone') {
+                    applyKnockback(e, p.x, p.y, p.knockbackDist, p.knockbackSpeed);
+                }
 
                 // Hit effects (skip for DOT zones to avoid particle spam)
                 if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone') {
