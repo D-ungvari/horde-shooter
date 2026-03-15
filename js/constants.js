@@ -36,10 +36,10 @@ export const MIN_SPAWN_INTERVAL = 0.3;
 export const SPAWN_BUDGET_GROWTH = 0.5; // per second
 
 // Object pool caps
-export const MAX_ENEMIES = 600;
+export const MAX_ENEMIES = 1200;
 export const MAX_PROJECTILES = 500;
-export const MAX_PARTICLES = 2000;
-export const MAX_XP_GEMS = 500;
+export const MAX_PARTICLES = 2500;
+export const MAX_XP_GEMS = 800;
 
 // Hit feedback
 export const HIT_FLASH_DURATION = 0.05; // ~3 frames at 60fps

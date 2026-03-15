@@ -26,7 +26,7 @@ const MAX_SHOCKWAVES = 10;
 
 // --- Damage Numbers ---
 const damageNumbers = [];
-const MAX_DAMAGE_NUMBERS = 60;
+const MAX_DAMAGE_NUMBERS = 100;
 
 // --- Screen Shake ---
 let shakeIntensity = 0;
