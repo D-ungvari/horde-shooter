@@ -200,7 +200,52 @@ export const EVOLUTIONS = {
         projectileSpeed: 280, projectileRadius: 8, projectileLifetime: 2.0,
         projectileCount: 1, pierce: 0, aoeRadius: 120, mirvCount: 6, color: '#FF2200',
     },
-    // TODO: remaining evolutions
+    thunderstorm: {
+        id: 'thunderstorm', name: 'Thunderstorm', icon: '⚡⚡',
+        description: 'Chain to 5 enemies, auto-target, wider arc.',
+        pattern: 'auto_chain', baseDamage: 20, baseCooldown: 0.7,
+        chainRange: 200, chainCount: 4, chainArc: true, color: '#44EEFF',
+    },
+    inferno: {
+        id: 'inferno', name: 'Inferno', icon: '🔥🌋',
+        description: 'Wider cone, leaves lingering fire zones.',
+        pattern: 'aimed_cone', baseDamage: 5, baseCooldown: 0.05,
+        projectileSpeed: 350, projectileRadius: 5, projectileLifetime: 0.35,
+        projectileCount: 2, spread: 0.6, color: '#FF4400',
+        lingeringFire: true, lingerInterval: 3, lingerRadius: 30, lingerDuration: 3.0,
+    },
+    chakram: {
+        id: 'chakram', name: 'Chakram', icon: '🪃💫',
+        description: 'Faster spin, wider arc, multi-bounce.',
+        pattern: 'auto_boomerang', baseDamage: 25, baseCooldown: 1.0,
+        projectileSpeed: 500, projectileRadius: 10, projectileLifetime: 2.5,
+        pierce: 99, color: '#22FFCC',
+        isChakram: true,
+    },
+    guardian_ring: {
+        id: 'guardian_ring', name: 'Guardian Ring', icon: '🔵🛡️',
+        description: '8 orbs, larger radius, periodic damage pulse.',
+        pattern: 'auto_orbital', baseDamage: 12, baseCooldown: 0,
+        orbitalCount: 8, orbitalRadius: 90, orbitalSpeed: 4, hitRadius: 12,
+        color: '#4488FF',
+        pulseInterval: 2.0, pulseRadius: 120, pulseDamage: 20,
+    },
+    plague: {
+        id: 'plague', name: 'Plague', icon: '☁️💀',
+        description: 'Larger zone, spreads on kill, longer duration.',
+        pattern: 'auto_zone', baseDamage: 8, baseCooldown: 2.5,
+        zoneRadius: 80, zoneDuration: 6.0, zoneTick: 0.4,
+        color: '#88FF22',
+        isPlague: true,
+    },
+    absolute_zero: {
+        id: 'absolute_zero', name: 'Absolute Zero', icon: '❄️💀',
+        description: 'Larger radius, longer freeze, damage over time.',
+        pattern: 'auto_burst', baseDamage: 15, baseCooldown: 3.5,
+        burstRadius: 160, slowDuration: 4.0, slowFactor: 0.1,
+        color: '#66CCFF',
+        freezeDot: true, freezeDotDamage: 5, freezeDotTick: 0.5,
+    },
 };
 
 // Level scaling: multipliers applied per weapon level

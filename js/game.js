@@ -3,7 +3,7 @@ import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as update
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
-import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions } from './weapons.js';
+import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions, spawnPlagueSpread } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
 import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, triggerExplosion } from './enemy.js';
 import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
@@ -321,8 +321,10 @@ function update(dt) {
                 e.health -= p.damage;
                 p.hitSet.add(e._poolIndex);
 
-                // Hit effects
-                spawnHitParticles(e.x, e.y, e.color);
+                // Hit effects (skip for DOT zones to avoid particle spam)
+                if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone') {
+                    spawnHitParticles(e.x, e.y, e.color);
+                }
                 spawnDamageNumber(e.x, e.y, Math.round(p.damage));
 
                 if (e.health <= 0) {
@@ -349,18 +351,26 @@ function update(dt) {
                         }
                     }
 
+                    // Plague: spread to nearby enemies on kill
+                    if (p.isPlague || p.type === 'plaguezone') {
+                        spawnPlagueSpread(e.x, e.y, p.damage * 0.6, p.radius * 0.5, 2.5);
+                    }
+
                     spawnXPBurst(e.x, e.y, e.xpValue);
                     releaseEnemy(e);
                 } else {
                     playEnemyHit();
                 }
 
-                // Pierce check
-                if (p.pierce <= 0) {
+                // Pierce check (zones/DOT projectiles always pierce)
+                if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') {
+                    // These don't consume pierce
+                } else if (p.pierce <= 0) {
                     projectilePool.release(p);
                     break;
+                } else {
+                    p.pierce--;
                 }
-                p.pierce--;
             }
         }
     });

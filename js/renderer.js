@@ -44,9 +44,17 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         for (let i = 0; i < projectiles.length; i++) {
             const p = projectiles[i];
             if (!p || !p.active) continue;
-            if (p.type === 'zone') {
+            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') {
                 if (!isInView(camera, p.x, p.y, p.radius + 20)) continue;
-                drawZone(p);
+                if (p.type === 'firezone') {
+                    drawFireZone(p);
+                } else if (p.type === 'plaguezone') {
+                    drawPlagueZone(p);
+                } else if (p.type === 'frostdot') {
+                    drawFrostDotZone(p);
+                } else {
+                    drawZone(p);
+                }
             }
         }
     }
@@ -86,7 +94,7 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         for (let i = 0; i < projectiles.length; i++) {
             const p = projectiles[i];
             if (!p || !p.active) continue;
-            if (p.type === 'zone') continue; // Already drawn
+            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') continue; // Already drawn
             if (!isInView(camera, p.x, p.y, Math.max(p.radius, 20) + 10)) continue;
             drawProjectile(p);
         }
@@ -322,6 +330,9 @@ function drawProjectile(p) {
         case 'boomerang':
             drawBoomerang(p);
             return;
+        case 'chakram':
+            drawChakram(p);
+            return;
         case 'frostburst':
             drawFrostBurst(p);
             return;
@@ -432,6 +443,170 @@ function drawBoomerang(p) {
     ctx.globalAlpha = 1.0;
 
     ctx.restore();
+}
+
+function drawChakram(p) {
+    const spin = gameTime * 20; // Faster spin than boomerang
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(spin);
+
+    const r = p.radius;
+
+    // Outer glow ring
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Chakram disc: 6-pointed star shape
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = p.color || '#22FFCC';
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const a = (Math.PI * 2 / 6) * i;
+        const outerR = r;
+        const innerR = r * 0.5;
+        const a2 = a + Math.PI / 6;
+        if (i === 0) {
+            ctx.moveTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
+        } else {
+            ctx.lineTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
+        }
+        ctx.lineTo(Math.cos(a2) * innerR, Math.sin(a2) * innerR);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Center core
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+}
+
+function drawFireZone(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const pulse = 1 + Math.sin(gameTime * 6) * 0.08;
+    const r = p.radius * pulse;
+
+    // Outer glow
+    ctx.globalAlpha = fade * 0.2;
+    ctx.fillStyle = '#FF6600';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main fire zone
+    ctx.globalAlpha = fade * 0.3;
+    ctx.fillStyle = '#FF4400';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hot core
+    ctx.globalAlpha = fade * 0.4;
+    ctx.fillStyle = '#FFAA22';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border ring
+    ctx.globalAlpha = fade * 0.5;
+    ctx.strokeStyle = '#FF4400';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1.0;
+}
+
+function drawPlagueZone(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const pulse = 1 + Math.sin(gameTime * 3) * 0.06;
+    const r = p.radius * pulse;
+
+    // Outer sickly glow
+    ctx.globalAlpha = fade * 0.12;
+    ctx.fillStyle = '#AAFF22';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main plague zone
+    ctx.globalAlpha = fade * 0.25;
+    ctx.fillStyle = '#88FF22';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Toxic core
+    ctx.globalAlpha = fade * 0.35;
+    ctx.fillStyle = '#44DD00';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border ring — pulsing skull-green
+    ctx.globalAlpha = fade * 0.5;
+    ctx.strokeStyle = '#66FF00';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.globalAlpha = 1.0;
+}
+
+function drawFrostDotZone(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const pulse = 1 + Math.sin(gameTime * 5) * 0.04;
+    const r = p.radius * pulse;
+
+    // Outer frost glow
+    ctx.globalAlpha = fade * 0.1;
+    ctx.fillStyle = '#88DDFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main frost zone
+    ctx.globalAlpha = fade * 0.15;
+    ctx.fillStyle = '#66CCFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ice ring border
+    ctx.globalAlpha = fade * 0.35;
+    ctx.strokeStyle = '#AAEEFF';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner crystalline pattern
+    ctx.globalAlpha = fade * 0.2;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+        const a = (Math.PI * 2 / 6) * i + gameTime * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + Math.cos(a) * r * 0.6, p.y + Math.sin(a) * r * 0.6);
+        ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1.0;
 }
 
 function drawFrostBurst(p) {

@@ -13,7 +13,7 @@ function createProjectileObj() {
         maxLifetime: 1.0,
         color: '#FFDD44',
         aoeRadius: 0,
-        type: 'normal', // normal, flame, lightning, boomerang, zone, frostburst, enemy
+        type: 'normal', // normal, flame, lightning, boomerang, zone, frostburst, firezone, chakram, plaguezone, frostdot, enemy
         // Tracking which enemies were hit (for pierce)
         hitSet: new Set(),
         // Boomerang state
@@ -25,6 +25,15 @@ function createProjectileObj() {
         zoneTimer: 0,
         // Lightning visual
         x1: 0, y1: 0, x2: 0, y2: 0,
+        // Chakram state
+        bounceCount: 0,
+        maxBounces: 0,
+        // Plague zone state
+        isPlague: false,
+        // Frost DOT state
+        freezeDotDamage: 0,
+        freezeDotTick: 0,
+        freezeDotTimer: 0,
     };
 }
 
@@ -60,6 +69,15 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     p.y1 = opts.y1 || 0;
     p.x2 = opts.x2 || 0;
     p.y2 = opts.y2 || 0;
+    // Chakram
+    p.bounceCount = opts.bounceCount || 0;
+    p.maxBounces = opts.maxBounces || 0;
+    // Plague
+    p.isPlague = opts.isPlague || false;
+    // Frost DOT
+    p.freezeDotDamage = opts.freezeDotDamage || 0;
+    p.freezeDotTick = opts.freezeDotTick || 0;
+    p.freezeDotTimer = 0;
     return p;
 }
 
@@ -67,14 +85,22 @@ export function updateProjectiles(dt, player) {
     pool.forEach(p => {
         p.lifetime += dt;
 
-        if (p.type === 'boomerang') {
+        if (p.type === 'boomerang' || p.type === 'chakram') {
             updateBoomerang(p, dt, player);
-        } else if (p.type === 'zone') {
+        } else if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone') {
             // Zones don't move, just tick
             p.zoneTimer += dt;
             if (p.zoneTimer >= p.zoneTick) {
                 p.zoneTimer -= p.zoneTick;
                 p.hitSet.clear(); // Allow re-hitting on each tick
+            }
+        } else if (p.type === 'frostdot') {
+            // Frost DOT zone: tick damage on frozen enemies nearby
+            p.freezeDotTimer += dt;
+            // hitSet cleared each tick so collision system re-applies damage
+            if (p.freezeDotTimer >= p.freezeDotTick) {
+                p.freezeDotTimer -= p.freezeDotTick;
+                p.hitSet.clear();
             }
         } else {
             // Normal movement
@@ -89,15 +115,25 @@ export function updateProjectiles(dt, player) {
 }
 
 function updateBoomerang(p, dt, player) {
-    const halfLife = p.maxLifetime * 0.45;
+    const isChakram = p.type === 'chakram';
+    const halfLife = p.maxLifetime * (isChakram ? 0.35 : 0.45);
 
     if (p.lifetime < halfLife) {
         // Outward phase
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        // Slow down
-        p.vx *= 0.98;
-        p.vy *= 0.98;
+        // Chakram: wider sweeping arc via perpendicular drift
+        if (isChakram) {
+            const perpX = -p.vy * 0.3 * dt;
+            const perpY = p.vx * 0.3 * dt;
+            p.x += perpX;
+            p.y += perpY;
+            p.vx *= 0.97;
+            p.vy *= 0.97;
+        } else {
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+        }
     } else {
         // Return phase — head toward player's current position
         if (player) {
@@ -105,7 +141,7 @@ function updateBoomerang(p, dt, player) {
             const dy = player.y - p.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist > 5) {
-                const speed = 500;
+                const speed = isChakram ? 650 : 500;
                 p.vx = (dx / dist) * speed;
                 p.vy = (dy / dist) * speed;
             }
@@ -118,6 +154,11 @@ function updateBoomerang(p, dt, player) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.returning = true;
+        // Chakram clears hit set periodically on return to enable multi-bounce hits
+        if (isChakram && p.bounceCount < p.maxBounces) {
+            p.bounceCount++;
+            p.hitSet.clear();
+        }
     }
 }
 

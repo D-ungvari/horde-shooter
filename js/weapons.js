@@ -14,10 +14,13 @@ function playWeaponSound(weaponId) {
         case 'rocket': case 'mirv': playRocket(); break;
         case 'lightning': case 'thunderstorm': playLightning(); break;
         case 'flamethrower': case 'inferno': playFlame(); break;
-        case 'frost_nova': case 'absolute_zero': playFrostNova(); break;
+        case 'frostnova': case 'absolute_zero': playFrostNova(); break;
         case 'railgun': playShoot(); break;
         case 'flak_cannon': playShotgun(); break;
         case 'minigun': playSmg(); break;
+        case 'boomerang': case 'chakram': playShoot(); break;
+        case 'poison': case 'plague': playFlame(); break;
+        case 'orbitals': case 'guardian_ring': break; // continuous, no sound per fire
     }
 }
 
@@ -26,10 +29,16 @@ const cooldowns = [];
 
 // Orbital state (persistent)
 const orbitalAngles = [];
+const orbitalPulseTimers = [];
+
+// Inferno lingering fire interval counter
+let infernoLingerTimer = 0;
 
 export function resetWeaponCooldowns() {
     cooldowns.length = 0;
     orbitalAngles.length = 0;
+    orbitalPulseTimers.length = 0;
+    infernoLingerTimer = 0;
 }
 
 // Expose cooldown state for HUD rendering
@@ -150,7 +159,7 @@ function fireAimedSpread(player, stats, mouseWorld, damage, pierce, lifetime) {
     return true;
 }
 
-// --- Aimed Cone (Flamethrower) ---
+// --- Aimed Cone (Flamethrower / Inferno) ---
 function fireAimedCone(player, stats, mouseWorld, damage, pierce, lifetime) {
     const baseAngle = angleBetween(player, mouseWorld);
     const spread = stats.spread || 0.4;
@@ -173,14 +182,40 @@ function fireAimedCone(player, stats, mouseWorld, damage, pierce, lifetime) {
             }
         );
     }
+
+    // Inferno: periodically leave a lingering fire zone at flame endpoint
+    if (stats.lingeringFire) {
+        infernoLingerTimer++;
+        if (infernoLingerTimer >= (stats.lingerInterval || 3)) {
+            infernoLingerTimer = 0;
+            const dir = v2FromAngle(baseAngle);
+            const dist = stats.projectileSpeed * (stats.projectileLifetime || 0.35) * 0.6;
+            const zx = player.x + dir.x * dist;
+            const zy = player.y + dir.y * dist;
+            const lingerRadius = (stats.lingerRadius || 30) * player.areaMultiplier;
+            const lingerDuration = (stats.lingerDuration || 3.0) * player.durationMultiplier;
+            spawnProjectile(zx, zy, 0, 0, {
+                radius: lingerRadius,
+                damage: damage * 0.4,
+                pierce: 999,
+                lifetime: lingerDuration,
+                color: '#FF4400',
+                type: 'firezone',
+                zoneTick: 0.4,
+                zoneTimer: 0,
+            });
+        }
+    }
+
     return true;
 }
 
-// --- Auto Chain (Lightning) ---
+// --- Auto Chain (Lightning / Thunderstorm) ---
 function fireAutoChain(player, stats, damage) {
     const pool = getEnemyPool();
     const chainRange = (stats.chainRange || 150) * player.areaMultiplier;
     const chainCount = stats.chainCount || 2;
+    const hasArc = stats.chainArc || false; // Thunderstorm: wider arc bolts
 
     // Find nearest enemy to player
     let nearest = null;
@@ -199,17 +234,19 @@ function fireAutoChain(player, stats, damage) {
     const hit = new Set();
     let current = nearest;
     let chainDmg = damage;
+    // Thunderstorm: less falloff per jump (10% vs 20%)
+    const falloff = hasArc ? 0.9 : 0.8;
 
     for (let i = 0; i < chainCount + 1; i++) {
         if (!current || !current.active) break;
         hit.add(current._poolIndex);
         current.health -= chainDmg;
-        chainDmg *= 0.8; // 20% falloff per jump
+        chainDmg *= falloff;
 
         // Visual: spawn a short-lived lightning bolt projectile from prev to current
         if (i === 0) {
             // From player to first target
-            spawnLightningBolt(player.x, player.y, current.x, current.y, stats.color);
+            spawnLightningBolt(player.x, player.y, current.x, current.y, stats.color, hasArc);
         }
 
         // Find next closest unvisited enemy
@@ -225,35 +262,63 @@ function fireAutoChain(player, stats, damage) {
         });
 
         if (nextTarget) {
-            spawnLightningBolt(current.x, current.y, nextTarget.x, nextTarget.y, stats.color);
+            spawnLightningBolt(current.x, current.y, nextTarget.x, nextTarget.y, stats.color, hasArc);
         }
         current = nextTarget;
+    }
+
+    // Thunderstorm: spawn a brief AoE damage pulse at the first target position
+    if (hasArc && nearest && nearest.active !== undefined) {
+        spawnProjectile(nearest.x, nearest.y, 0, 0, {
+            radius: chainRange * 0.3,
+            damage: 0,
+            pierce: 999,
+            lifetime: 0.2,
+            color: stats.color || '#44EEFF',
+            type: 'frostburst', // re-use frostburst visual for the arc pulse
+        });
     }
 
     return true;
 }
 
-function spawnLightningBolt(x1, y1, x2, y2, color) {
+function spawnLightningBolt(x1, y1, x2, y2, color, wideArc = false) {
     // Spawn a fast, short-lived projectile along the line for visual effect
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
     const midX = (x1 + x2) / 2;
     const midY = (y1 + y2) / 2;
     spawnProjectile(midX, midY, 0, 0, {
-        radius: 3,
+        radius: wideArc ? 5 : 3,
         damage: 0,
         pierce: 999,
-        lifetime: 0.15,
+        lifetime: wideArc ? 0.25 : 0.15,
         color: color || '#88CCFF',
         type: 'lightning',
         // Store endpoints for renderer
         x1, y1, x2, y2,
     });
+    // Thunderstorm: spawn a second, parallel arc for the wider visual
+    if (wideArc) {
+        const perpX = Math.cos(angle + Math.PI / 2) * 8;
+        const perpY = Math.sin(angle + Math.PI / 2) * 8;
+        spawnProjectile(midX, midY, 0, 0, {
+            radius: 3,
+            damage: 0,
+            pierce: 999,
+            lifetime: 0.2,
+            color: '#FFFFFF',
+            type: 'lightning',
+            x1: x1 + perpX, y1: y1 + perpY,
+            x2: x2 + perpX, y2: y2 + perpY,
+        });
+    }
 }
 
-// --- Auto Boomerang ---
+// --- Auto Boomerang / Chakram ---
 function fireAutoBoomerang(player, stats, damage, lifetime) {
     const pool = getEnemyPool();
+    const isChakram = stats.isChakram || false;
 
     // Find nearest enemy
     let nearest = null;
@@ -281,15 +346,17 @@ function fireAutoBoomerang(player, stats, damage, lifetime) {
             pierce: 99, // boomerangs always pierce
             lifetime: lifetime,
             color: stats.color,
-            type: 'boomerang',
+            type: isChakram ? 'chakram' : 'boomerang',
             ownerX: player.x,
             ownerY: player.y,
+            bounceCount: 0,
+            maxBounces: isChakram ? 5 : 0,
         }
     );
     return true;
 }
 
-// --- Auto Orbital ---
+// --- Auto Orbital / Guardian Ring ---
 function updateOrbitals(player, stats, slotIndex, dt) {
     const count = stats.orbitalCount || 2;
     const radius = (stats.orbitalRadius || 60) * player.areaMultiplier;
@@ -317,6 +384,45 @@ function updateOrbitals(player, stats, slotIndex, dt) {
                 e.health -= damage * dt * 3; // DPS-based damage
             }
         });
+    }
+
+    // Guardian Ring: periodic damage pulse
+    if (stats.pulseInterval) {
+        if (orbitalPulseTimers[slotIndex] === undefined) orbitalPulseTimers[slotIndex] = 0;
+        orbitalPulseTimers[slotIndex] += dt;
+
+        if (orbitalPulseTimers[slotIndex] >= stats.pulseInterval) {
+            orbitalPulseTimers[slotIndex] = 0;
+            const pulseRadius = (stats.pulseRadius || 120) * player.areaMultiplier;
+            const pulseDmg = (stats.pulseDamage || 20) * player.damageMultiplier;
+
+            // Damage all enemies in pulse radius
+            pool.forEach(e => {
+                const dx = e.x - player.x;
+                const dy = e.y - player.y;
+                if (dx * dx + dy * dy < pulseRadius * pulseRadius) {
+                    e.health -= pulseDmg;
+                }
+            });
+
+            // Visual: expanding ring burst
+            const ringCount = 16;
+            for (let i = 0; i < ringCount; i++) {
+                const angle = (Math.PI * 2 / ringCount) * i;
+                const dir = v2FromAngle(angle);
+                spawnProjectile(player.x, player.y,
+                    dir.x * 300, dir.y * 300,
+                    {
+                        radius: 5,
+                        damage: 0,
+                        pierce: 999,
+                        lifetime: 0.25,
+                        color: stats.color || '#4488FF',
+                        type: 'frostburst',
+                    }
+                );
+            }
+        }
     }
 }
 
@@ -346,10 +452,11 @@ export function getOrbitalPositions(player) {
     return positions;
 }
 
-// --- Auto Zone (Poison Cloud) ---
+// --- Auto Zone (Poison Cloud / Plague) ---
 function fireAutoZone(player, stats, damage) {
     const zoneRadius = (stats.zoneRadius || 50) * player.areaMultiplier;
     const duration = (stats.zoneDuration || 4) * player.durationMultiplier;
+    const isPlague = stats.isPlague || false;
 
     // Spawn a stationary, large, long-lived "projectile" as the zone
     spawnProjectile(player.x, player.y, 0, 0, {
@@ -358,18 +465,35 @@ function fireAutoZone(player, stats, damage) {
         pierce: 999,
         lifetime: duration,
         color: stats.color || '#66FF44',
-        type: 'zone',
+        type: isPlague ? 'plaguezone' : 'zone',
         zoneTick: stats.zoneTick || 0.5,
         zoneTimer: 0,
+        isPlague: isPlague,
     });
     return true;
 }
 
-// --- Auto Burst (Frost Nova) ---
+// Exported for game.js to call when a plague-zone enemy dies
+export function spawnPlagueSpread(x, y, damage, radius, duration) {
+    spawnProjectile(x, y, 0, 0, {
+        radius: radius,
+        damage: damage,
+        pierce: 999,
+        lifetime: duration,
+        color: '#88FF22',
+        type: 'plaguezone',
+        zoneTick: 0.4,
+        zoneTimer: 0,
+        isPlague: true,
+    });
+}
+
+// --- Auto Burst (Frost Nova / Absolute Zero) ---
 function fireAutoBurst(player, stats, damage) {
     const burstRadius = (stats.burstRadius || 100) * player.areaMultiplier;
     const slowDuration = (stats.slowDuration || 2) * player.durationMultiplier;
     const slowFactor = stats.slowFactor || 0.4;
+    const hasFreezeDot = stats.freezeDot || false;
 
     const pool = getEnemyPool();
 
@@ -385,21 +509,41 @@ function fireAutoBurst(player, stats, damage) {
     });
 
     // Visual burst: spawn ring of short projectiles outward
-    const ringCount = 12;
+    const ringCount = hasFreezeDot ? 20 : 12;
     for (let i = 0; i < ringCount; i++) {
         const angle = (Math.PI * 2 / ringCount) * i;
         const dir = v2FromAngle(angle);
         spawnProjectile(player.x, player.y,
-            dir.x * 200, dir.y * 200,
+            dir.x * (hasFreezeDot ? 300 : 200),
+            dir.y * (hasFreezeDot ? 300 : 200),
             {
-                radius: 4,
+                radius: hasFreezeDot ? 5 : 4,
                 damage: 0,
                 pierce: 999,
-                lifetime: 0.3,
+                lifetime: hasFreezeDot ? 0.4 : 0.3,
                 color: stats.color || '#AADDFF',
                 type: 'frostburst',
             }
         );
     }
+
+    // Absolute Zero: spawn a lingering frost DOT zone at player position
+    if (hasFreezeDot) {
+        const dotDamage = (stats.freezeDotDamage || 5) * player.damageMultiplier;
+        const dotDuration = slowDuration; // DOT lasts as long as the freeze
+        spawnProjectile(player.x, player.y, 0, 0, {
+            radius: burstRadius,
+            damage: dotDamage,
+            pierce: 999,
+            lifetime: dotDuration,
+            color: '#66CCFF',
+            type: 'frostdot',
+            freezeDotDamage: dotDamage,
+            freezeDotTick: stats.freezeDotTick || 0.5,
+            zoneTick: stats.freezeDotTick || 0.5,
+            zoneTimer: 0,
+        });
+    }
+
     return true;
 }
