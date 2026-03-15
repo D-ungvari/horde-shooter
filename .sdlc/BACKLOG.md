@@ -6,49 +6,47 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Up Next
 
 ### Phase 1: Juice & Impact
-- [ ] **010 — Projectile trail effects** — Ring buffer of previous positions per projectile
-
 ### Phase 2: Enemy Visual Overhaul
-- [ ] **011 — Shambler composite body** — Slouching, dangling arms, stumpy legs
-- [ ] **012 — Runner composite body** — Lean, forward sprint pose, sharp teeth
-- [ ] **013 — Bat wing shapes** — Arc paths for wings, flapping animation
-- [ ] **014 — Brute armored body** — Wide rectangular body, horns/spikes
-- [ ] **015 — Spitter bloated body** — Puffed cheeks, projectile windup
-- [ ] **016 — Swarmer insectoid body** — Multiple legs, antennae
-- [ ] **017 — Exploder wobbling body** — Crack glow, sparking particles
-- [ ] **018 — Boss visual overhauls** — Multi-part bodies, auras, phase shifts
-- [ ] **019 — Enemy animations** — Spawn (grow from 0), walk cycle (sine-wave), LOD for distant enemies
+- [x] **011 — Shambler composite body** — Slouching, dangling arms, stumpy legs (8346768)
+- [x] **012 — Runner composite body** — Lean, forward sprint pose, sharp teeth (b023e1e)
+- [x] **013 — Bat wing shapes** — Arc paths for wings, flapping animation (a8e57ff)
+- [x] **014 — Brute armored body** — Wide rectangular body, horns/spikes (0972c5f)
+- [x] **015 — Spitter bloated body** — Puffed cheeks, projectile windup (0972c5f)
+- [x] **016 — Swarmer insectoid body** — Multiple legs, antennae (0972c5f)
+- [x] **017 — Exploder wobbling body** — Crack glow, sparking particles (0972c5f)
+- [x] **018 — Boss visual overhauls** — Multi-part bodies, auras, phase shifts (f48442c)
+- [x] **019 — Enemy animations** — Spawn animation + LOD rendering (d65b373)
 
 ### Phase 3: Enemy Density & Horde Feel
-- [ ] **020 — Increase MAX_ENEMIES to 1200** — Expand object pool, batch rendering by type
-- [ ] **021 — LOD rendering system** — Full detail near camera, simple circles far away
-- [ ] **022 — Particle budget cap** — 500 max active particles, reuse oldest
-- [ ] **023 — Group & wave spawning** — Groups of 3-5 after 5min, waves of 15-20 after 10min
-- [ ] **024 — The Wall spawn pattern** — Line of 20+ enemies from one direction
-- [ ] **025 — Swarm burst events** — 30-50 swarmers every 30s
-- [ ] **026 — Performance profiling** — Maintain 60fps at 1000 enemies
+- [x] **020 — Increase MAX_ENEMIES to 1200** — Pool sizes doubled/scaled (6ba521c)
+- [x] **021 — LOD rendering system** — Already implemented in item 019 (d65b373)
+- [x] **022 — Particle budget cap** — Pool increased to 2500, LOD scales particle counts (6ba521c)
+- [x] **023 — Group & wave spawning** — Tiered: clusters, edge waves, continuous flood (b6f9455)
+- [x] **024 — The Wall spawn pattern** — 20-30 enemies in a line, march straight for 5s (b6f9455)
+- [x] **025 — Swarm burst events** — 30-50 swarmers from one edge every 30s (b6f9455)
+- [ ] **026 — Performance profiling** — MANUAL: play-test at high density, profile with DevTools. Deferred to Phase 7
 
 ### Phase 4: Weapon Effects & Blast Zones
-- [ ] **027 — Explosion effect system** — Expanding circle + shockwave + debris for AoE
-- [ ] **028 — Lingering fire zones** — Rocket Lv4, Inferno: persistent ground fire
-- [ ] **029 — Frost zones** — Crystalline visual, slow + DoT
-- [ ] **030 — Plague zones** — Green cloud with bubbles, chain spread on kill
-- [ ] **031 — Weapon trail effects** — Smoke, static residue, heat distortion per weapon type
-- [ ] **032 — Ground scars** — Fading blast marks at explosion locations
+- [x] **027 — Explosion effect system** — Expanding circle + shockwave + debris (1bdc0e7)
+- [x] **028 — Lingering fire zones** — Rising flame particles (1bdc0e7)
+- [x] **029 — Frost zones** — Drifting mist particles (1bdc0e7)
+- [x] **030 — Plague zones** — Rising green bubble particles (1bdc0e7)
+- [x] **031 — Weapon trail effects** — Rocket smoke trail (1bdc0e7)
+- [x] **032 — Ground scars** — Fading dark circles at blast sites (1bdc0e7)
 
 ### Phase 5: Status Effects & Combo System
-- [ ] **033 — Status effect system** — Burning, Frozen, Poisoned, Electrified, Weakened
-- [ ] **034 — Status visual indicators** — Tints, particles, overlays per status
-- [ ] **035 — Combo reaction triggers** — 7 combos (Steam Explosion, Chain Lightning, etc.)
-- [ ] **036 — Combo discovery UI** — Banner on first trigger + pause menu list
-- [ ] **037 — Combo VFX & SFX** — Unique visual and audio per combo reaction
+- [x] **033 — Status effect system** — 5 statuses with DoT, speed/damage modifiers (d12c911)
+- [x] **034 — Status visual indicators** — Tints + particles per status (d12c911)
+- [x] **035 — Combo reaction triggers** — 7 combos with anti-loop safeguards (d12c911)
+- [x] **036 — Combo discovery UI** — Banner + pause screen list (d12c911)
+- [x] **037 — Combo VFX & SFX** — Unique visuals per combo (d12c911)
 
 ### Phase 6: Weapon Milestones & New Weapons
-- [ ] **038 — Level 4 & 7 behavioral unlocks** — Per-weapon milestone mechanics for all 10 weapons
-- [ ] **039 — Visual upgrades at Level 3 & 6** — Trails, size increase, glow intensification
-- [ ] **040 — New weapon: Whip** — auto_sweep, 120° arc, Death Scythe evolution
-- [ ] **041 — New weapon: Holy Water** — auto_zone_targeted, Blessed Ground evolution
-- [ ] **042 — New weapon: Sawblade** — auto_ricochet, 8 bounces, Eternal Saw evolution
+- [x] **038 — Level 4 & 7 behavioral unlocks** — All 10 weapons (19b7afe)
+- [x] **039 — Visual upgrades at Level 3 & 6** — Enhanced trails + glow (19b7afe)
+- [x] **040 — New weapon: Whip** — auto_sweep + Death Scythe evo (19b7afe)
+- [x] **041 — New weapon: Holy Water** — zone_targeted + Blessed Ground evo (19b7afe)
+- [x] **042 — New weapon: Sawblade** — ricochet + Eternal Saw evo (19b7afe)
 
 ### Phase 7: Polish & Balance
 - [ ] **043 — Weapon & enemy balance pass** — DPS curves, cooldown feel, AoE coverage
@@ -72,3 +70,4 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 - [x] **007 — Multi-kill time dilation** — 80% speed for 100ms on 10+ kills (9c11190)
 - [x] **008 — AoE shockwave ring** — Expanding ring on frost nova, guardian ring, exploder (6dada0e)
 - [x] **009 — Damage number polish** — Scale-in animation, color/size tiers (dbd0df4)
+- [x] **010 — Projectile trail effects** — Ring buffer of 6 positions, fading afterimages (1922044)

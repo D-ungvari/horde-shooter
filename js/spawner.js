@@ -12,14 +12,14 @@ let announcements = []; // { text, triggeredAt }
 // Difficulty tier announcements
 const DIFFICULTY_TIERS = [
     { minute: 1, label: 'Enemies grow stronger...' },
-    { minute: 3, label: 'Danger rising!' },
-    { minute: 5, label: 'BOSS INCOMING!' },
-    { minute: 7, label: 'Onslaught!' },
-    { minute: 10, label: 'BOSS INCOMING!' },
-    { minute: 12, label: 'Nightmare!' },
-    { minute: 15, label: 'BOSS INCOMING!' },
-    { minute: 17, label: 'HELL MODE!' },
-    { minute: 20, label: 'FINAL BOSS!' },
+    { minute: 2, label: 'Danger rising!' },
+    { minute: 4, label: 'BOSS INCOMING!' },
+    { minute: 6, label: 'Onslaught!' },
+    { minute: 8, label: 'BOSS INCOMING!' },
+    { minute: 10, label: 'Nightmare!' },
+    { minute: 12, label: 'BOSS INCOMING!' },
+    { minute: 14, label: 'HELL MODE!' },
+    { minute: 16, label: 'FINAL BOSS!' },
 ];
 let nextTierIndex = 0;
 
@@ -30,7 +30,7 @@ const SWARM_BURST_INTERVAL = 30; // every 30 seconds
 // Wall pattern (024) — periodic wall of enemies along viewport edge
 let wallTimer = 0;
 const WALL_INTERVAL = 90; // every 90 seconds
-const WALL_START_MINUTE = 8; // walls begin at minute 8
+const WALL_START_MINUTE = 5; // walls begin at minute 5
 
 // Swarm events (legacy ring swarms)
 let swarmTimer = 0;
@@ -98,8 +98,8 @@ export function updateSpawner(player, dt, camera) {
     if (spawnTimer <= 0) {
         const countMult = bossActive ? 0.4 : 1;
 
-        if (minutes >= 15) {
-            // 15+ min: continuous flood — 5-8 per event, minimum interval
+        if (minutes >= 12) {
+            // 12+ min: continuous flood — 5-8 per event, minimum interval
             const count = Math.max(1, Math.floor((randomRange(5, 8) | 0) * countMult));
             for (let i = 0; i < count; i++) {
                 const type = pickEnemyType();
@@ -108,8 +108,8 @@ export function updateSpawner(player, dt, camera) {
                 spawnEnemy(pos.x, pos.y, type, minutes, elite);
             }
             spawnTimer = MIN_SPAWN_INTERVAL;
-        } else if (minutes >= 10) {
-            // 10-15 min: wave of 15-20 from a screen edge
+        } else if (minutes >= 7) {
+            // 7-12 min: wave of 15-20 from a screen edge
             const waveCount = Math.max(1, Math.floor((randomRange(15, 20) | 0) * countMult));
             if (camera) {
                 spawnEdgeWave(player, camera, waveCount, minutes);
@@ -123,13 +123,13 @@ export function updateSpawner(player, dt, camera) {
                 }
             }
             spawnTimer = getCurrentInterval();
-        } else if (minutes >= 5) {
-            // 5-10 min: group of 3-5 in a cluster
+        } else if (minutes >= 3) {
+            // 3-7 min: group of 3-5 in a cluster
             const groupSize = Math.max(1, Math.floor((randomRange(3, 5) | 0) * countMult));
             const type = pickEnemyType();
             const pos = getSpawnPosition(player);
             for (let i = 0; i < groupSize; i++) {
-                const elite = minutes > 5 && Math.random() < getEliteChance();
+                const elite = minutes > 3 && Math.random() < getEliteChance();
                 spawnEnemy(
                     pos.x + randomRange(-50, 50),
                     pos.y + randomRange(-50, 50),
@@ -138,12 +138,12 @@ export function updateSpawner(player, dt, camera) {
             }
             spawnTimer = getCurrentInterval();
         } else {
-            // Under 5 min: original single-spawn behavior
+            // Under 3 min: original single-spawn behavior
             const count = Math.max(1, Math.floor(getSpawnCount() * countMult));
             for (let i = 0; i < count; i++) {
                 const type = pickEnemyType();
                 const pos = getSpawnPosition(player);
-                const elite = minutes > 5 && Math.random() < getEliteChance();
+                const elite = minutes > 3 && Math.random() < getEliteChance();
                 spawnEnemy(pos.x, pos.y, type, minutes, elite);
             }
             spawnTimer = getCurrentInterval();
@@ -168,13 +168,15 @@ export function updateSpawner(player, dt, camera) {
         }
     }
 
-    // --- Swarm burst events (025) — every 30s ---
-    swarmBurstTimer -= dt;
-    if (swarmBurstTimer <= 0) {
-        if (camera) {
-            triggerSwarmBurst(player, camera);
+    // --- Swarm burst events (025) — every 30s, starting at minute 2 ---
+    if (minutes >= 2) {
+        swarmBurstTimer -= dt;
+        if (swarmBurstTimer <= 0) {
+            if (camera) {
+                triggerSwarmBurst(player, camera);
+            }
+            swarmBurstTimer = SWARM_BURST_INTERVAL;
         }
-        swarmBurstTimer = SWARM_BURST_INTERVAL;
     }
 }
 
@@ -371,7 +373,7 @@ function pickEnemyType() {
     const minutes = elapsedTime / 60;
     const roll = Math.random();
 
-    if (minutes > 15) {
+    if (minutes > 12) {
         if (roll < 0.08) return 'exploder';
         if (roll < 0.18) return 'brute';
         if (roll < 0.28) return 'spitter';
@@ -380,7 +382,7 @@ function pickEnemyType() {
         if (roll < 0.75) return 'runner';
         return 'shambler';
     }
-    if (minutes > 8) {
+    if (minutes > 4) {
         if (roll < 0.05) return 'exploder';
         if (roll < 0.13) return 'brute';
         if (roll < 0.22) return 'spitter';
@@ -389,14 +391,14 @@ function pickEnemyType() {
         if (roll < 0.65) return 'runner';
         return 'shambler';
     }
-    if (minutes > 4) {
+    if (minutes > 2) {
         if (roll < 0.08) return 'spitter';
         if (roll < 0.20) return 'bat';
         if (roll < 0.30) return 'swarmer';
         if (roll < 0.50) return 'runner';
         return 'shambler';
     }
-    if (minutes > 2) {
+    if (minutes > 1) {
         if (roll < 0.10) return 'bat';
         if (roll < 0.20) return 'swarmer';
         if (roll < 0.45) return 'runner';
@@ -419,16 +421,16 @@ function getSpawnCount() {
 
 function getCurrentInterval() {
     const minutes = elapsedTime / 60;
-    const interval = INITIAL_SPAWN_INTERVAL - minutes * 0.10;
+    const interval = INITIAL_SPAWN_INTERVAL - minutes * 0.15;
     return Math.max(MIN_SPAWN_INTERVAL, interval);
 }
 
 function getEliteChance() {
     const minutes = elapsedTime / 60;
-    if (minutes < 5) return 0;
-    if (minutes < 10) return 0.03;
-    if (minutes < 15) return 0.06;
-    return 0.10;
+    if (minutes < 3) return 0;
+    if (minutes < 7) return 0.05;
+    if (minutes < 12) return 0.10;
+    return 0.15;
 }
 
 function getSpawnPosition(player, customDist) {

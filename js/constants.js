@@ -31,7 +31,7 @@ export const COLOR_HEALTH_PICKUP = '#FF4466';
 // Spawner
 export const SPAWN_DISTANCE_MIN = 500;
 export const SPAWN_DISTANCE_MAX = 700;
-export const INITIAL_SPAWN_INTERVAL = 2.0;
+export const INITIAL_SPAWN_INTERVAL = 1.2;
 export const MIN_SPAWN_INTERVAL = 0.3;
 export const SPAWN_BUDGET_GROWTH = 0.5; // per second
 

@@ -175,10 +175,10 @@ export const BOSSES = {
 
 // Boss schedule: which boss spawns at which minute mark
 export const BOSS_SCHEDULE = [
-    { minute: 5, bossId: 'flesh_colossus' },
-    { minute: 10, bossId: 'hive_queen' },
-    { minute: 15, bossId: 'infernal_knight' },
-    { minute: 20, bossId: 'elder_spitter' },
+    { minute: 4, bossId: 'flesh_colossus' },
+    { minute: 8, bossId: 'hive_queen' },
+    { minute: 12, bossId: 'infernal_knight' },
+    { minute: 16, bossId: 'elder_spitter' },
 ];
 
 // Difficulty scaling per minute survived

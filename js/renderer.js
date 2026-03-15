@@ -134,88 +134,562 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
 
 // --- Entity drawing ---
 
+// Map evolution IDs back to base weapon family for visuals
+const EVOLUTION_TO_BASE = {};
+for (const [id, def] of Object.entries(WEAPONS)) {
+    if (def.evolutionId) EVOLUTION_TO_BASE[def.evolutionId] = id;
+}
+
+// --- Weapon-specific gun arm visuals ---
+function drawPlayerWeapon(weaponId) {
+    // Arm base (skin-colored forearm) — always drawn
+    ctx.fillStyle = '#3377CC';
+    ctx.fillRect(6, -3, 12, 6);
+
+    // Resolve evolution IDs to base weapon for visual
+    const resolvedId = EVOLUTION_TO_BASE[weaponId] || weaponId;
+
+    switch (resolvedId) {
+        case 'pistol':
+            // Small pistol
+            ctx.fillStyle = '#888899';
+            ctx.fillRect(16, -3, 10, 6);
+            ctx.fillStyle = '#666677';
+            ctx.fillRect(24, -1.5, 6, 3);
+            // Trigger guard
+            ctx.strokeStyle = '#666677';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(20, 5, 3, 0, Math.PI);
+            ctx.stroke();
+            break;
+
+        case 'shotgun':
+            // Wide barrel, shorter, with pump grip
+            ctx.fillStyle = '#7A5533';
+            ctx.fillRect(14, -4, 8, 8); // wooden pump grip
+            ctx.fillStyle = '#888899';
+            ctx.fillRect(20, -5, 14, 10); // wide barrel
+            ctx.fillStyle = '#666677';
+            ctx.fillRect(32, -4, 4, 8); // barrel end
+            // Top rail
+            ctx.fillStyle = '#AAAABB';
+            ctx.fillRect(20, -5, 14, 2);
+            break;
+
+        case 'smg':
+            // Medium barrel with magazine below
+            ctx.fillStyle = '#888899';
+            ctx.fillRect(16, -3.5, 14, 7);
+            ctx.fillStyle = '#666677';
+            ctx.fillRect(28, -2, 6, 4); // barrel
+            // Magazine
+            ctx.fillStyle = '#555566';
+            ctx.fillRect(20, 4, 5, 8);
+            // Top rail
+            ctx.fillStyle = '#AAAABB';
+            ctx.fillRect(18, -3.5, 8, 1.5);
+            break;
+
+        case 'rocket':
+            // Thick tube, open end
+            ctx.fillStyle = '#556655';
+            ctx.fillRect(14, -6, 20, 12); // thick tube body
+            ctx.fillStyle = '#444444';
+            ctx.fillRect(32, -7, 4, 14); // open end (wider)
+            // Grip
+            ctx.fillStyle = '#7A5533';
+            ctx.fillRect(18, 6, 6, 5);
+            // Sight on top
+            ctx.fillStyle = '#AAAABB';
+            ctx.fillRect(22, -8, 2, 3);
+            break;
+
+        case 'lightning':
+            // No barrel — glowing orb/crystal at hand
+            // Glow effect
+            const lGlow = 0.3 + Math.sin(gameTime * 6) * 0.15;
+            ctx.globalAlpha = lGlow;
+            ctx.fillStyle = '#88CCFF';
+            ctx.beginPath();
+            ctx.arc(20, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 0.6 + Math.sin(gameTime * 8) * 0.2;
+            ctx.fillStyle = '#CCDDFF';
+            ctx.beginPath();
+            ctx.arc(20, 0, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            // Core crystal
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.arc(20, 0, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+
+        case 'flamethrower':
+            // Wide nozzle (flared at tip) + fuel tank
+            ctx.fillStyle = '#888899';
+            ctx.fillRect(14, -3, 12, 6); // body
+            // Flared nozzle
+            ctx.fillStyle = '#AA5522';
+            ctx.beginPath();
+            ctx.moveTo(26, -3);
+            ctx.lineTo(34, -6);
+            ctx.lineTo(34, 6);
+            ctx.lineTo(26, 3);
+            ctx.closePath();
+            ctx.fill();
+            // Fuel tank on arm
+            ctx.fillStyle = '#CC4422';
+            ctx.beginPath();
+            ctx.ellipse(10, 6, 5, 3.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#993311';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+            break;
+
+        case 'boomerang':
+            // Hand holding curved boomerang
+            // Fist
+            ctx.fillStyle = '#3377CC';
+            ctx.beginPath();
+            ctx.arc(18, 0, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            // Boomerang shape
+            ctx.strokeStyle = '#44DDAA';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(22, -6, 10, 0.3, Math.PI * 0.8);
+            ctx.stroke();
+            ctx.strokeStyle = '#33BB88';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(22, -6, 10, 0.3, Math.PI * 0.8);
+            ctx.stroke();
+            break;
+
+        case 'orbitals':
+            // Open palm, orbs orbit separately
+            // Open palm
+            ctx.fillStyle = '#3377CC';
+            ctx.beginPath();
+            ctx.arc(18, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+            // Fingers (small lines radiating)
+            ctx.strokeStyle = '#2266BB';
+            ctx.lineWidth = 1.5;
+            for (let i = -2; i <= 2; i++) {
+                const fAngle = i * 0.25;
+                ctx.beginPath();
+                ctx.moveTo(20, i * 1.5);
+                ctx.lineTo(24 + Math.cos(fAngle) * 2, i * 2.5);
+                ctx.stroke();
+            }
+            // Glow at palm
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = '#66AAFF';
+            ctx.beginPath();
+            ctx.arc(18, 0, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            break;
+
+        case 'poison':
+            // Vial/flask shape (circle + triangle top)
+            ctx.fillStyle = '#448833';
+            ctx.beginPath();
+            ctx.arc(22, 2, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // Flask neck
+            ctx.fillStyle = '#336622';
+            ctx.fillRect(20, -5, 4, 6);
+            // Cork
+            ctx.fillStyle = '#8B6914';
+            ctx.fillRect(19.5, -7, 5, 3);
+            // Liquid shimmer
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = '#88FF44';
+            ctx.beginPath();
+            ctx.arc(22, 3, 3, 0, Math.PI);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            break;
+
+        case 'frostnova':
+            // Crystal staff (thin rect + diamond at tip, icy blue)
+            ctx.fillStyle = '#7A5533';
+            ctx.fillRect(14, -1.5, 14, 3); // staff shaft
+            // Diamond crystal tip
+            ctx.fillStyle = '#AADDFF';
+            ctx.beginPath();
+            ctx.moveTo(30, 0);
+            ctx.lineTo(26, -5);
+            ctx.lineTo(22, 0);
+            ctx.lineTo(26, 5);
+            ctx.closePath();
+            ctx.fill();
+            // Crystal shine
+            ctx.fillStyle = '#DDEEFF';
+            ctx.beginPath();
+            ctx.moveTo(28, -1);
+            ctx.lineTo(26, -3);
+            ctx.lineTo(24, -1);
+            ctx.closePath();
+            ctx.fill();
+            // Frost glow
+            ctx.globalAlpha = 0.25 + Math.sin(gameTime * 4) * 0.1;
+            ctx.fillStyle = '#88CCFF';
+            ctx.beginPath();
+            ctx.arc(26, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            break;
+
+        case 'whip':
+            // Whip coiled at hand (curved line)
+            ctx.fillStyle = '#3377CC';
+            ctx.beginPath();
+            ctx.arc(18, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+            // Coiled whip
+            ctx.strokeStyle = '#CC88FF';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(20, 0);
+            ctx.quadraticCurveTo(28, -8, 24, 2);
+            ctx.quadraticCurveTo(20, 10, 30, 4);
+            ctx.stroke();
+            // Handle
+            ctx.fillStyle = '#7A5533';
+            ctx.fillRect(15, -2, 6, 4);
+            break;
+
+        case 'holywater':
+            // Flask similar to poison but blue
+            ctx.fillStyle = '#2266AA';
+            ctx.beginPath();
+            ctx.arc(22, 2, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // Flask neck
+            ctx.fillStyle = '#1155AA';
+            ctx.fillRect(20, -5, 4, 6);
+            // Cork
+            ctx.fillStyle = '#8B6914';
+            ctx.fillRect(19.5, -7, 5, 3);
+            // Holy glow
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = '#88DDFF';
+            ctx.beginPath();
+            ctx.arc(22, 2, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            // Cross on flask
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(21, 0, 2, 4);
+            ctx.fillRect(20, 1, 4, 2);
+            break;
+
+        case 'sawblade':
+            // Mechanical launcher (boxy rect with circular saw at front)
+            ctx.fillStyle = '#777788';
+            ctx.fillRect(14, -4, 12, 8); // boxy body
+            ctx.fillStyle = '#555566';
+            ctx.fillRect(12, -3, 4, 6); // grip section
+            // Circular saw at front
+            ctx.strokeStyle = '#CCCCCC';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(30, 0, 6, 0, Math.PI * 2);
+            ctx.stroke();
+            // Saw teeth (small notches)
+            ctx.fillStyle = '#DDDDDD';
+            for (let i = 0; i < 6; i++) {
+                const a = (i / 6) * Math.PI * 2 + gameTime * 8;
+                ctx.fillRect(30 + Math.cos(a) * 6 - 1, Math.sin(a) * 6 - 1, 2, 2);
+            }
+            break;
+
+        default:
+            // Fallback generic gun (like old default)
+            ctx.fillStyle = '#888899';
+            ctx.fillRect(16, -4, 14, 8);
+            ctx.fillStyle = '#666677';
+            ctx.fillRect(28, -2, 8, 4);
+            ctx.fillStyle = '#AAAABB';
+            ctx.fillRect(18, -3, 3, 6);
+            break;
+    }
+}
+
 function drawPlayerEntity(player) {
     const { x, y, radius, aimAngle, invincible } = player;
     const isMoving = Math.abs(player.vx) > 10 || Math.abs(player.vy) > 10;
     const breathe = Math.sin(gameTime * 3) * 0.5;
+    const hpRatio = player.health / player.maxHealth;
+
+    // --- Power level checks ---
+    const weaponCount = player.weapons ? player.weapons.length : 0;
+    const hasEvolved = player.weapons ? player.weapons.some(w => {
+        return !!EVOLUTIONS[w.id];
+    }) : false;
+    const primaryWeaponId = (player.weapons && player.weapons.length > 0)
+        ? player.weapons[0].id : null;
+
+    // --- Damage state: low HP red particles ---
+    if (hpRatio < 0.30 && isMoving) {
+        const particleChance = hpRatio < 0.15 ? 0.4 : 0.15;
+        if (Math.random() < particleChance) {
+            spawnParticle(
+                x + (Math.random() - 0.5) * 8,
+                y + (Math.random() - 0.5) * 8,
+                -player.vx * 0.1 + (Math.random() - 0.5) * 20,
+                -player.vy * 0.1 + (Math.random() - 0.5) * 20,
+                2 + Math.random() * 2,
+                '#FF2222',
+                0.4 + Math.random() * 0.3,
+                true
+            );
+        }
+    }
 
     ctx.save();
+
+    // --- Damage state: flicker ---
+    if (hpRatio < 0.30) {
+        const flickerRate = hpRatio < 0.15 ? 12 : 6;
+        const flickering = Math.floor(gameTime * flickerRate) % 2 === 0;
+        if (flickering) {
+            ctx.globalAlpha = 0.5;
+        }
+    }
 
     if (invincible > 0) {
         ctx.globalAlpha = Math.floor(invincible * 10) % 2 === 0 ? 0.3 : 1.0;
     }
 
-    // Shadow
+    // --- Power aura ---
+    if (weaponCount >= 3) {
+        const auraAlpha = weaponCount >= 5 ? 0.18 : 0.1;
+        const auraSize = weaponCount >= 5 ? radius * 2.8 : radius * 2.2;
+        const gradient = ctx.createRadialGradient(x, y + breathe, radius * 0.5, x, y + breathe, auraSize);
+        gradient.addColorStop(0, 'rgba(100,180,255,' + (auraAlpha + Math.sin(gameTime * 3) * 0.04) + ')');
+        gradient.addColorStop(1, 'rgba(100,180,255,0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y + breathe, auraSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // --- Orbiting sparkle at 5+ weapons ---
+    if (weaponCount >= 5) {
+        const sparkAngle = gameTime * 4;
+        const sparkDist = radius * 2;
+        const sx = x + Math.cos(sparkAngle) * sparkDist;
+        const sy = y + breathe + Math.sin(sparkAngle) * sparkDist;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.globalAlpha = 0.6 + Math.sin(gameTime * 10) * 0.3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        // Restore flicker/invincible alpha
+        if (hpRatio < 0.30 && Math.floor(gameTime * (hpRatio < 0.15 ? 12 : 6)) % 2 === 0) {
+            ctx.globalAlpha = 0.5;
+        }
+        if (invincible > 0) {
+            ctx.globalAlpha = Math.floor(invincible * 10) % 2 === 0 ? 0.3 : 1.0;
+        }
+    }
+
+    // --- Shadow ---
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
-    ctx.ellipse(x, y + radius + 2, radius * 0.8, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + radius + 4, radius * 0.9, 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Legs (behind body)
+    // --- Legs (behind body, longer with boots) ---
     const legPhase = isMoving ? Math.sin(gameTime * 14) : 0;
     const moveAngle = Math.atan2(player.vy, player.vx);
-    ctx.fillStyle = '#2255AA';
+    const legLength = 7;
     for (let side = -1; side <= 1; side += 2) {
-        const legOffset = legPhase * 4 * side;
+        const legOffset = legPhase * 5 * side;
         const perpX = Math.cos(moveAngle + Math.PI / 2) * 5 * side;
         const perpY = Math.sin(moveAngle + Math.PI / 2) * 5 * side;
         const fwdX = Math.cos(moveAngle) * legOffset;
         const fwdY = Math.sin(moveAngle) * legOffset;
+        const legX = x + perpX + fwdX;
+        const legY = y + perpY + fwdY + 5;
+
+        // Upper leg
+        ctx.fillStyle = '#2255AA';
         ctx.beginPath();
-        ctx.arc(x + perpX + fwdX, y + perpY + fwdY + 4, 5, 0, Math.PI * 2);
+        ctx.ellipse(legX, legY, 4, legLength, 0, 0, Math.PI * 2);
         ctx.fill();
+
+        // Boot (small rect at bottom)
+        ctx.fillStyle = '#1A1A2E';
+        ctx.save();
+        ctx.translate(legX, legY + legLength - 1);
+        ctx.rotate(isMoving ? moveAngle : 0);
+        ctx.fillRect(-4, -2, 8, 5);
+        ctx.restore();
     }
 
-    // Body
-    ctx.fillStyle = COLOR_PLAYER;
+    // --- Torso (ellipse, slightly wider than tall) ---
+    const torsoW = radius * 1.15;
+    const torsoH = radius * 0.95;
+
+    // Evolved golden outline
+    if (hasEvolved) {
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.4 + Math.sin(gameTime * 2) * 0.15;
+        ctx.beginPath();
+        ctx.ellipse(x, y + breathe, torsoW + 2, torsoH + 2, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        // Restore alpha
+        ctx.globalAlpha = 1.0;
+        if (hpRatio < 0.30 && Math.floor(gameTime * (hpRatio < 0.15 ? 12 : 6)) % 2 === 0) {
+            ctx.globalAlpha = 0.5;
+        }
+        if (invincible > 0) {
+            ctx.globalAlpha = Math.floor(invincible * 10) % 2 === 0 ? 0.3 : 1.0;
+        }
+    }
+
+    // Desaturation at low HP
+    if (hpRatio < 0.15) {
+        ctx.fillStyle = '#5577AA';
+    } else if (hpRatio < 0.30) {
+        ctx.fillStyle = COLOR_PLAYER;
+    } else {
+        ctx.fillStyle = COLOR_PLAYER;
+    }
     ctx.beginPath();
-    ctx.arc(x, y + breathe, radius, 0, Math.PI * 2);
+    ctx.ellipse(x, y + breathe, torsoW, torsoH, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body armor ring
-    ctx.strokeStyle = COLOR_PLAYER_DARK;
-    ctx.lineWidth = 3;
+    // Body armor vest (darker inner rect)
+    ctx.fillStyle = COLOR_PLAYER_DARK;
+    ctx.save();
+    ctx.translate(x, y + breathe);
+    ctx.rotate(aimAngle * 0.05); // subtle lean toward aim
+    ctx.fillRect(-8, -7, 16, 14);
+    // Vest detail lines
+    ctx.strokeStyle = '#1A4488';
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
-    ctx.arc(x, y + breathe, radius - 3, 0, Math.PI * 2);
+    ctx.moveTo(0, -7);
+    ctx.lineTo(0, 7);
+    ctx.stroke();
+    ctx.restore();
+
+    // Body armor edge highlight
+    ctx.strokeStyle = '#5599DD';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y + breathe, torsoW - 1, torsoH - 1, 0, -0.4, 0.4);
     ctx.stroke();
 
-    // Body highlight
-    ctx.fillStyle = '#66AAFF';
+    // --- Shoulders (connecting to arms) ---
+    const shoulderY = y + breathe - 2;
+    // Left shoulder
+    ctx.fillStyle = '#3377CC';
     ctx.beginPath();
-    ctx.arc(x - 3, y - 4 + breathe, 4, 0, Math.PI * 2);
+    ctx.arc(x - torsoW + 2, shoulderY, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Right shoulder
+    ctx.beginPath();
+    ctx.arc(x + torsoW - 2, shoulderY, 4.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Gun arm
+    // --- Gun arm (weapon-specific) ---
     ctx.save();
     ctx.translate(x, y + breathe);
     ctx.rotate(aimAngle);
-    ctx.fillStyle = '#3377CC';
-    ctx.fillRect(8, -3, 14, 6);
-    ctx.fillStyle = '#888899';
-    ctx.fillRect(18, -4, 14, 8);
-    ctx.fillStyle = '#666677';
-    ctx.fillRect(30, -2, 8, 4);
-    ctx.fillStyle = '#AAAABB';
-    ctx.fillRect(20, -3, 3, 6);
+    drawPlayerWeapon(primaryWeaponId);
     ctx.restore();
 
-    // Eyes (facing aim direction)
-    const eyeOffX = Math.cos(aimAngle) * 3;
-    const eyeOffY = Math.sin(aimAngle) * 3;
+    // --- Head (separate circle above body) ---
+    const headY = y + breathe - radius - 4;
+    const headRadius = 8;
+
+    // Neck
+    ctx.fillStyle = '#3377CC';
+    ctx.fillRect(x - 2.5, headY + headRadius - 2, 5, 6);
+
+    // Head circle
+    if (hpRatio < 0.15) {
+        ctx.fillStyle = '#5577AA'; // desaturated
+    } else {
+        ctx.fillStyle = COLOR_PLAYER;
+    }
+    ctx.beginPath();
+    ctx.arc(x, headY, headRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head outline
+    ctx.strokeStyle = COLOR_PLAYER_DARK;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, headY, headRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Helmet/headband (thin stripe across head for military look)
+    ctx.strokeStyle = '#1A3366';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, headY, headRadius - 1, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.stroke();
+    // Headband detail
+    ctx.fillStyle = '#2B4D7A';
+    ctx.fillRect(x - headRadius + 2, headY - 2, headRadius * 2 - 4, 3);
+
+    // --- Eyes on head (facing aim direction) ---
+    const eyeOffX = Math.cos(aimAngle) * 2.5;
+    const eyeOffY = Math.sin(aimAngle) * 2.5;
+
+    // Eye whites (slightly larger)
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.arc(x - 4 + eyeOffX, y - 4 + eyeOffY + breathe, 3, 0, Math.PI * 2);
+    ctx.arc(x - 3.5 + eyeOffX, headY - 1 + eyeOffY, 3.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(x + 4 + eyeOffX, y - 4 + eyeOffY + breathe, 3, 0, Math.PI * 2);
+    ctx.arc(x + 3.5 + eyeOffX, headY - 1 + eyeOffY, 3.5, 0, Math.PI * 2);
     ctx.fill();
+
+    // Pupils (more expressive — larger, offset more toward aim)
     ctx.fillStyle = '#112244';
     ctx.beginPath();
-    ctx.arc(x - 4 + eyeOffX * 1.4, y - 4 + eyeOffY * 1.4 + breathe, 1.5, 0, Math.PI * 2);
+    ctx.arc(x - 3.5 + eyeOffX * 1.6, headY - 1 + eyeOffY * 1.6, 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(x + 4 + eyeOffX * 1.4, y - 4 + eyeOffY * 1.4 + breathe, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + 3.5 + eyeOffX * 1.6, headY - 1 + eyeOffY * 1.6, 2, 0, Math.PI * 2);
     ctx.fill();
+
+    // Pupil highlights
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(x - 3.5 + eyeOffX * 1.6 + 0.8, headY - 1 + eyeOffY * 1.6 - 0.8, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 3.5 + eyeOffX * 1.6 + 0.8, headY - 1 + eyeOffY * 1.6 - 0.8, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Low HP red tint overlay on body ---
+    if (hpRatio < 0.30) {
+        const redAlpha = hpRatio < 0.15 ? 0.25 : 0.12;
+        ctx.globalAlpha = redAlpha;
+        ctx.fillStyle = '#FF0000';
+        ctx.beginPath();
+        ctx.ellipse(x, y + breathe, torsoW, torsoH, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, headY, headRadius, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     ctx.globalAlpha = 1.0;
     ctx.restore();

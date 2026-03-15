@@ -1,6 +1,6 @@
 # Horde Shooter — Major Visual & Weapon System Upgrade
 
-> Last updated: 2026-03-15 | Refined: Pass 2 | Status: PLANNING
+> Last updated: 2026-03-15 | Refined: Pass 7 | Status: Phase 1 COMPLETE (10/10). Phase 2 starting: enemy visual overhaul
 
 ## Core Vision
 
@@ -41,15 +41,47 @@ Each enemy type needs a **distinct silhouette**, not just a different color circ
 
 **Drawing approach:** Composite procedural shapes (like the player already uses) — multiple circles, rectangles, and paths composed into distinct creatures. No external image files needed.
 
-| Enemy | Current | Upgraded Visual | Silhouette |
-|-------|---------|----------------|------------|
-| Shambler | Green circle | Slouching body, stumpy legs, dangling arms, slack jaw | Round + low |
-| Runner | Red circle | Lean body, long legs mid-stride, sharp teeth, forward lean | Tall + thin |
-| Bat | Purple circle | Wing shapes (arc paths), small body, red eyes, flapping animation | Wide + flat |
-| Brute | Orange circle | Wide rectangular body, thick legs, horns/spikes, armored plates | Square + large |
-| Spitter | Lime circle | Puffed cheeks, bloated midsection, visible projectile in mouth | Round + bulging |
-| Swarmer | Dark gray circle | Tiny insectoid, multiple legs (4-6 lines), antennae | Small + spiky |
-| Exploder | Red circle | Unstable body (wobbling), cracks with inner glow, sparking particles | Pulsing + jagged |
+**Architecture & rollout strategy:** Create a `drawEnemy[type]` function map in renderer.js (or a new `enemyRenderer.js`). **Implement one enemy at a time.** The fallback for any type without a custom draw function is the existing circle renderer. This means the game works correctly at every commit — some enemies are circles, some have new bodies. The function map pattern:
+```javascript
+var enemyDrawFns = {
+  shambler: drawShambler,
+  // runner: drawRunner,  ← uncomment as implemented
+  // ...
+};
+function drawEnemyBody(ctx, e, gameTime) {
+  var fn = enemyDrawFns[e.type];
+  if (fn) fn(ctx, e, gameTime);
+  else drawEnemyCircleFallback(ctx, e); // existing circle rendering
+}
+```
+
+Start with Shambler (most common enemy, immediately visible impact). Then Runner (second most common). Then the rest in any order. This is also testable — you can verify each enemy looks right before moving on.
+
+**Integration with Phase 1 effects:** The new draw functions must respect existing Phase 1 systems:
+- **Hit flash**: Already implemented as white overlay. For composite bodies, apply `ctx.globalCompositeOperation = 'source-atop'` after drawing the full body, then fill a white rect over the bounds. Or simpler: draw entire body in white when `e.hitFlashTimer > 0` (replace all fillStyle with `#FFFFFF`)
+- **Knockback squash**: Apply `ctx.scale(squashX, squashY)` BEFORE calling the draw function. The composite body stretches/squashes as a unit — no per-limb adjustment needed
+- **Death-pop scale**: Same — `ctx.scale(deathScale, deathScale)` wraps the entire draw function. Composite body shrinks/grows uniformly
+- **LOD**: The function map naturally supports LOD. At medium distance, call a simpler draw function (body shape + color only, skip eyes/details). At minimal distance, bypass the map entirely and draw a circle Each enemy type gets its own draw function: `drawShambler(ctx, e, gameTime)`, `drawRunner(ctx, e, gameTime)`, etc. The main render loop dispatches: `enemyDrawFns[e.type](ctx, e, gameTime)`. This keeps each drawing function focused (~30-50 lines) instead of one massive function with branching.
+
+**Draw call budget per enemy (full LOD):** Target 10-15 calls. The player uses ~12 calls (body, legs, arm, gun, eyes, highlights). Keep enemies at similar or lower complexity.
+
+| Enemy | Current | Upgraded Visual | Silhouette | Canvas Primitives (~call count) |
+|-------|---------|----------------|------------|-------------------------------|
+| Shambler | Green circle | Slouching body, stumpy legs, dangling arms, slack jaw | Round + low | Main body (ellipse), 2 legs (circles), 2 arms (rects, angled down), jaw (arc), 2 eyes → ~9 |
+| Runner | Red circle | Lean body, long legs mid-stride, sharp teeth, forward lean | Tall + thin | Tall ellipse (tilted 15° forward), 2 long legs (rects), pointed ear triangles, teeth (3 small triangles along mouth arc), 2 eyes → ~11 |
+| Bat | Purple circle | Wing shapes (arc paths), small body, red eyes, flapping animation | Wide + flat | Small body (circle), 2 wings (quadratic bezier paths, flap = Y control point oscillates), 2 red eyes, ear points → ~8 |
+| Brute | Orange circle | Wide rectangular body, thick legs, horns/spikes, armored plates | Square + large | Wide rounded rect, 2 thick legs (rects), 2 horns (triangles), armor plate (darker rect on chest), 2 small eyes → ~10 |
+| Spitter | Lime circle | Puffed cheeks, bloated midsection, visible projectile in mouth | Round + bulging | Pear-shaped body (2 overlapping circles: big belly + smaller head), puffed cheeks (2 small circles), mouth circle with green projectile dot, 2 eyes → ~9 |
+| Swarmer | Dark gray circle | Tiny insectoid, multiple legs (4-6 lines), antennae | Small + spiky | Small body (circle), 6 legs (lineTo strokes from body edge), 2 antennae (lines with dot tips), 2 tiny eyes → ~7 (cheapest) |
+| Exploder | Red circle | Unstable body (wobbling), cracks with inner glow, sparking particles | Pulsing + jagged | Body (circle, wobbles via radius oscillation), 3-4 crack lines (strokes from center outward), inner glow (smaller circle, bright yellow, pulsing alpha), 2 eyes → ~9 |
+
+**Facing & orientation:**
+- Each enemy already has a `targetAngle` (angle toward player) used for eye direction
+- Use `targetAngle` to determine facing: `facingRight = Math.abs(targetAngle) < Math.PI/2`
+- For horizontally asymmetric features (arms, teeth, lean): use `ctx.scale(facingRight ? 1 : -1, 1)` to flip the drawing. Draw everything as if facing right, let the scale flip handle left-facing
+- Body tilt (Runner): `ctx.rotate(facingRight ? 0.25 : -0.25)` — slight forward lean in movement direction
+- Bat: no horizontal flip needed (wings are symmetric). Use `targetAngle` directly for flight direction
+- Swarmer: no flip needed (rotationally symmetric insect)
 
 **Animation states per enemy (procedural, not frame-based):**
 
@@ -110,8 +142,16 @@ More dramatic than hits — kills are the primary reward signal:
 1. **Hit stop**: 15-30ms game freeze (1-2 frames at 60fps). Only on kills, NOT hits. Creates rhythmic staccato when mowing through hordes
    - **Implementation:** Add `game.hitStopTimer` to game state. When a kill occurs, set `hitStopTimer = 0.02`. In the game loop, if `hitStopTimer > 0`, decrement by dt but skip all entity updates (still render). This freezes gameplay but keeps the frame drawing, making the freeze visible. Cap at 50ms to prevent cascading freezes from mass kills
 2. **Death pop**: Enemy scales to 1.3x over 50ms, then rapidly to 0x over 100ms (squash-and-pop)
+   - **Key change:** Don't release enemy to pool immediately on death. Instead set `enemy.dying = true`, `enemy.deathTimer = 0.15`. During dying: enemy doesn't collide, doesn't move, doesn't deal damage, just plays the scale animation. Release to pool when `deathTimer <= 0`
+   - Scale curve: `t = deathTimer / 0.15`. If `t > 0.67` (first 50ms): scale = lerp(1.0, 1.3, (1-t)/0.33). Else: scale = lerp(1.3, 0, (0.67-t)/0.67)
+   - Add slight rotation during death (spin ±30° over the 150ms) for visual flair
+   - Enemy color desaturates during death (lerp toward gray)
 3. **Death particles**: 12-20 particles in enemy color + 4-6 white sparks. More particles for bigger enemies
+   - Spawn at the MOMENT of death (frame 1), not after the animation finishes
+   - Boss death: 50 colored + 20 gold + 10 white particles, staggered over 200ms. Implementation: queue 4 bursts at 0ms/60ms/120ms/180ms (20+20+20+20 particles). Use a `pendingParticleBursts` array checked each frame: `[{delay, x, y, count, color}]`. Decrement delay by dt, spawn when delay <= 0. This creates a cascading explosion rather than a single pop
 4. **XP gem burst**: Gems spawn with outward velocity (fan pattern), then get pulled by magnet. Satisfying "loot explosion"
+   - Spawn gems at death animation MIDPOINT (75ms in, when enemy is at max 1.3x scale) — gems "burst out" of the inflated enemy
+   - Outward velocity: 80-200 px/s in a fan, gravity pulls them back down, then magnet takes over
 5. **Screen shake**: Slightly stronger than hit shake (1-2px). Boss kills: 8-10px shake for 300ms
 6. **Score popup**: Floating "+150" with combo multiplier color coding
 7. **Sound**: Descending multi-tone (already exists), pitch varies slightly per kill to avoid monotony
@@ -341,8 +381,16 @@ if (enemy.knockbackTimer > 0) {
 
 **Visual during knockback:**
 - Enemy slightly squashed in movement direction (0.85x width, 1.15x height)
-- Small dust particles at feet
+- Small dust particles at feet (1-2 particles, quick fade)
 - Enemy can't act during knockback (briefly stunned)
+
+**Edge cases:**
+- **Multiple knockbacks**: If enemy is already being knocked back and gets hit again, take the STRONGER knockback (don't accumulate — prevents enemies being launched off screen)
+- **Knockback stacking with crowd push**: Knockback velocity feeds into crowd-push. Enemy A gets knocked into Enemy B → B gets pushed. But B's push force is 30% of A's knockback (not full transfer)
+- **Bosses**: 90% resistance means a 50px rocket knockback moves a boss only 5px. But it should still visually react (brief flinch animation, 1 frame scale squash) even with minimal movement — player needs feedback that their attack connected
+- **Swarmers**: 0% resistance + tiny mass = they fly far. Cap swarmer knockback at 60px to prevent them leaving screen
+- **AoE knockback direction**: For explosions, knockback radiates FROM blast center. Enemies at the edge get full distance, enemies near center get less (they're already at the epicenter). Formula: `effectiveKB = baseKB * (1 - dist/radius * 0.5)` — center gets 50% KB, edge gets 100%
+- **Zone damage (fire/poison/frost)**: NO knockback from DoT ticks (would create jittery bouncing). Only initial application can knockback
 
 **The horde-push fantasy:** When Rocket hits a dense pack, enemies FLY outward from the blast center. 20 enemies simultaneously knocked back creates a satisfying "parting the sea" effect. This is THE moment that defines the Vampire Survivors feel.
 
@@ -384,6 +432,13 @@ Add status effects that weapons inflict. These become the basis for cross-weapon
 | **Poisoned** | Poison Cloud, Plague | Green tint + bubble particles | 2 DMG/s for 5s, -20% damage dealt |
 | **Electrified** | Lightning, Thunderstorm | Blue spark particles, brief glow | Next hit from ANY source deals +30% damage |
 | **Weakened** | Boomerang (blunt force), Orbitals | Darker tint | -25% speed, -15% damage for 3s |
+
+**Stacking & Co-existence Rules:**
+- An enemy CAN have multiple different statuses simultaneously (Burning + Poisoned + Weakened = valid)
+- **Same status re-applied**: Refreshes duration to max. Burning stacks INTENSITY (up to 3 stacks: 3/6/9 DMG/s). Other statuses don't stack intensity, just refresh timer
+- **Frozen + movement statuses**: Frozen overrides Weakened's speed reduction (already at -50%). When freeze expires, Weakened speed penalty resumes if still active
+- **Electrified is consumed on trigger**: When the +30% damage bonus triggers, Electrified status is removed. Must be re-applied for another proc. This prevents permanent +30% damage
+- **Status data per enemy**: `enemy.statuses = { burning: { timer, stacks }, frozen: { timer }, poisoned: { timer }, electrified: { active }, weakened: { timer } }` — flat object, no arrays, cheap to check
 
 ### Cross-Weapon Combo Triggers
 
@@ -524,16 +579,30 @@ All base evolutions are now functional: Rail Gun, Flak Cannon, Minigun, MIRV, Th
 ### Phase 1: Juice & Impact (Highest Priority)
 **Goal:** Make existing weapons FEEL powerful. No new content, just feedback.
 
-- [ ] Hit flash (white overlay, 2 frames)
-- [ ] Hit knockback system (per-weapon knockback values)
-- [ ] Kill hit-stop (15-30ms freeze)
-- [ ] Kill death-pop animation (scale up → shrink to 0)
-- [ ] Enhanced kill particles (12-20, more dramatic)
-- [ ] Screen shake tuning (micro-shake on hit, bigger on kill, massive on boss)
-- [ ] Multi-kill time dilation (100ms at 80% speed for 10+ simultaneous kills)
-- [ ] Shockwave ring for AoE explosions
-- [ ] Damage number polish (scale-in animation, color coding)
-- [ ] Projectile trail effects (ring buffer of previous positions)
+- [x] Hit flash (white overlay, 2 frames) — done: 4130059
+- [x] Hit knockback system (per-weapon knockback values, crowd-push) — done: 119ccb5
+- [x] Kill hit-stop (15-30ms freeze) — done: ce34782
+- [x] Kill death-pop animation (scale up → shrink to 0) — done: 56d527c
+- [x] Enhanced kill particles (12-20, more dramatic) — done: d58a12f
+- [x] Screen shake tuning (micro-shake on hit, bigger on kill, massive on boss) — done: 1c66762
+  - Use a single `shakeIntensity` float that decays each frame (`*= 0.88`)
+  - On event, ADD to intensity (not replace): hit +0.5, kill +1.5, AoE kill +2.5, boss kill +8
+  - **Hard cap**: `shakeIntensity = Math.min(shakeIntensity, 10)` — prevents nausea from 50 simultaneous kills
+  - Shake offset: `offsetX = (Math.random()-0.5) * shakeIntensity * 2`, same for Y
+  - Multiply by user's shake setting (0-100%, default 100%): `shakeIntensity * settings.shakeScale`
+  - Boss kill: set intensity to 8 directly (override, not additive) + slower decay (`*= 0.95`) for 300ms
+- [x] Multi-kill time dilation (100ms at 80% speed for 10+ simultaneous kills) — done: 9c11190
+- [x] Shockwave ring for AoE explosions — done: 6dada0e
+- [x] Damage number polish (scale-in animation, color/size coding by damage tier) — done: dbd0df4
+  - Add `scale` property to damage number objects. Animate: 0→1.2 over first 100ms (overshoot), then 1.2→1.0 over next 50ms (settle). Use `ctx.save(); ctx.scale(s,s); ctx.fillText(...); ctx.restore()` centered on the number position
+  - Color thresholds already specified in Section 2 (gray→white→yellow→orange→red→magenta)
+  - Combine with existing upward drift and alpha fade
+- [x] Projectile trail effects (ring buffer of previous positions per projectile) — done: 1922044
+  - Add `trail: [{x,y}, ...]` array (length 6) to each projectile in the pool. On acquire: clear trail to all {0,0}. Each frame: shift entries, write current position to index 0
+  - Render: draw fading circles at trail positions. Alpha = `0.4 * (1 - i/6)`. Radius = `projRadius * (1 - i/6 * 0.5)`. Skip trail[i] if x===0 && y===0 (not yet filled)
+  - Zone and orbital projectiles: NO trails (stationary or orbiting, trails look wrong)
+  - Lightning: skip trail (already has jagged-line visual). Instead, persist the bolt line for 100ms after strike (already specced in Section 5)
+  - Performance: 6 extra circle draws per active projectile. At 500 projectiles = 3000 draws. Acceptable within budget
 
 ### Phase 2: Enemy Visual Overhaul
 **Goal:** Every enemy type visually distinct. Readable in a crowd of hundreds.
@@ -546,9 +615,22 @@ All base evolutions are now functional: Rail Gun, Flak Cannon, Minigun, MIRV, Th
 - [ ] Swarmer insectoid legs/antennae
 - [ ] Exploder wobbling body with crack glow
 - [ ] Boss visual overhauls (multi-part bodies, auras, phase shifts)
-- [ ] Spawn animation (grow from 0)
-- [ ] Walk cycle (sine-wave procedural)
-- [ ] LOD system: simple circles for distant enemies (>400px from camera)
+  - Each boss body: 15-20 draw calls (higher budget justified — max 4 on screen ever)
+  - Flesh Colossus: massive round body + 4 dangling tentacle appendages (bezier curves, sway animation) + single glowing eye
+  - Hive Queen: segmented insect body (3 overlapping ellipses) + translucent wing pair + crown of antennae
+  - Infernal Knight: angular armored body (rects + triangles) + flaming sword arm (rect + flame particles) + visor slit eyes
+  - Elder Spitter: large pear body (like Spitter but 3x) + 3 mouth openings (circles) + pustule bumps (small circles on surface)
+  - Phase shifts: at 50%/25% HP, body color darkens 20%, glow aura intensifies, particle emission rate doubles
+- [ ] Spawn animation: scale from 0→1.1→1.0 over 300ms (overshoot + settle). Semi-transparent during spawn (alpha 0.3→1.0). No collision during spawn animation (prevents unfair instant damage)
+- [ ] Walk cycle: legs oscillate via `sin(gameTime * enemy.speed * 0.1 + legPhase)`. Body bobs Y by `sin(gameTime * enemy.speed * 0.15) * 1.5`. Runner: exaggerated lean angle increases with speed. Bat: wing flap = bezier control point Y oscillation at 8Hz
+- [ ] LOD system: implement WITH the first enemy body (Shambler), not after all bodies are done. The function map + circle fallback already provides 2-tier LOD. Add the distance check to `drawEnemyBody()` immediately:
+  ```javascript
+  var dist = Math.hypot(e.x - player.x, e.y - player.y);
+  if (dist > 500) { drawEnemyDot(ctx, e); return; }       // minimal: 1 circle
+  if (dist > 250) { drawEnemySimple(ctx, e); return; }     // medium: body shape only
+  enemyDrawFns[e.type]?.(ctx, e, gameTime) ?? drawEnemyCircleFallback(ctx, e); // full detail
+  ```
+  This prevents frame drops as more composite bodies are added. Build LOD first, then it "just works" for every subsequent enemy type
 
 ### Phase 3: Enemy Density & Horde Feel
 **Goal:** 800-1200 enemies on screen. Waves crashing against you.
@@ -560,8 +642,10 @@ All base evolutions are now functional: Rail Gun, Flak Cannon, Minigun, MIRV, Th
 - [ ] Group spawning (3-5 at once after 5 min)
 - [ ] Wave spawning (15-20 simultaneously after 10 min)
 - [ ] Continuous stream after 15 min
-- [ ] "The Wall" spawn pattern (line of 20+ from one direction)
+- [ ] "The Wall" spawn pattern (line of 20+ from one direction, audio+visual telegraph)
+- [ ] "Encirclement" pattern (walls from all 4 edges at minute 18+, one-time climactic event)
 - [ ] Swarm burst events (30-50 swarmers every 30s)
+- [ ] Enemy separation (crowd-push at 0.15 force to prevent blobbing into unreadable mass)
 - [ ] Performance profiling: maintain 60fps at 1000 enemies
 
 ### Phase 4: Weapon Effects & Blast Zones
@@ -596,14 +680,33 @@ All base evolutions are now functional: Rail Gun, Flak Cannon, Minigun, MIRV, Th
 - [ ] New weapons: Whip, Holy Water, Sawblade (start with 3)
 - [ ] New evolutions for new weapons
 - [ ] Level-up choice system: softly guide toward role diversity
+  - New weapons (Whip, Holy Water, Sawblade) are added to the existing weapon pool — available as "New Weapon" choices alongside the original 10
+  - Total roster: 13 weapons, still max 6 per run (same as current)
+  - Soft role guidance: if player has no Area Denial weapon, slightly increase chance of offering Poison Cloud / Holy Water / Frost Nova. Weight: 1.5x for under-represented roles (not forced, just nudged)
+  - New weapon evolutions use the same passive pairing system: weapon Lv8 + matching passive → evolution choice
 - [ ] Additional weapons (Mine Layer, Black Hole, Laser Beam) in future pass
+  - These 3 added to the pool later (total 16), keeping 6-slot cap
+  - Laser Beam is the only manual-aim weapon — its level-up description should note "Requires manual aim for full effectiveness"
 
 ### Phase 7: Polish & Balance
 **Goal:** Everything feels right.
 
-- [ ] Weapon balance pass (DPS curves, cooldown feel, AoE coverage)
-- [ ] Enemy scaling balance (HP/damage vs player power curve)
-- [ ] Combo damage balance
+- [ ] Weapon balance pass — target DPS bands per weapon role:
+  - **Crowd Clear (Shotgun, SMG, Flamethrower, Whip)**: 40-80 DPS at Lv1, 150-250 DPS evolved. High throughput, low per-hit
+  - **Boss Killer (Pistol, Rocket, Lightning, Laser)**: 25-50 DPS at Lv1, 100-200 DPS evolved. Spiky, high per-hit
+  - **Area Denial (Poison, Frost Nova, Holy Water)**: 15-30 DPS at Lv1, 60-120 DPS evolved. Sustained zone damage
+  - **Ambient (Orbitals, Boomerang, Sawblade)**: 20-40 DPS at Lv1, 80-150 DPS evolved. Passive, no player input
+  - Test: each weapon solo (no passives) should kill a Shambler in 2-4 hits at Lv1, 1 hit at Lv5+
+- [ ] Enemy scaling balance — power curve checkpoints:
+  - Minute 3: player should kill Shamblers in 1-2 hits. Feels comfortable
+  - Minute 8: first evolution. Evolved weapon should one-shot Shamblers, 3-shot Brutes
+  - Minute 12: 3+ evolved weapons. Regular enemies die nearly instantly. Elites take 3-5s
+  - Minute 18: screen-clear builds functional. Player should feel overwhelmingly powerful against regulars but bosses still threaten
+  - Minute 20+: enemy HP scaling catches up. Even evolved builds start struggling. Death inevitable by minute 25-30
+- [ ] Combo damage balance — combos should be powerful but not instant-win:
+  - Single combo reaction: equivalent to 1-2 weapon hits. Noticeable, not dominant
+  - Cascade chain (3+ reactions): can clear a cluster of 15-20 enemies. The "wow" moment, but requires two specific weapons + setup
+  - No infinite loops: Shatter spawns ice shards that deal damage but do NOT apply Frozen status (prevents infinite shatter chains)
 - [ ] Audio pass: new sounds for all new effects (procedural Web Audio):
   - **Knockback impact**: Short noise burst (50ms) + low sine (80Hz, 30ms). Pitched by knockback force
   - **Explosion (Rocket/MIRV)**: White noise (100ms decay) + sine sweep 200Hz→60Hz + distortion. The bass thump
@@ -615,8 +718,16 @@ All base evolutions are now functional: Rail Gun, Flak Cannon, Minigun, MIRV, Th
   - **Boss phase change**: Descending ominous chord (3 sines: 200, 150, 100Hz, 500ms, fade)
   - **"The Wall" spawn warning**: Rising sine sweep (100→800Hz, 500ms) — audio telegraph before the line appears
 - [ ] Performance optimization pass (target: 60fps with 1000 enemies, all effects active)
-- [ ] Accessibility: option to reduce screen shake, flash effects, particle density
-- [ ] Settings menu: shake intensity slider, particle density slider
+- [ ] Accessibility & settings menu (add to pause screen):
+  - **Screen shake intensity**: slider 0-100% (default 100%). At 0%: all shake disabled
+  - **Flash effects**: toggle on/off (default on). Disables hit flash, screen flash, combo flashes
+  - **Particle density**: slider 0-100% (default 100%). Scales all particle counts proportionally
+  - **Hit-stop**: toggle on/off (default on). Some players find the micro-freezes distracting
+  - **Damage numbers**: toggle on/off (default on). Reduces visual noise for players who want cleaner readability
+  - **Master volume**: slider 0-100% (already partially exists via audio.js gain)
+  - Store settings in localStorage alongside existing meta/save data
+  - Apply immediately on change (no "apply" button)
+  - Settings persist across sessions and runs
 
 ---
 
