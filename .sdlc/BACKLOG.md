@@ -6,7 +6,6 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Up Next
 
 ### Phase 1: Juice & Impact
-- [ ] **008 — AoE shockwave ring** — Expanding translucent ring for AoE explosions
 - [ ] **009 — Damage number polish** — Scale-in animation, color/size coding by damage tier
 - [ ] **010 — Projectile trail effects** — Ring buffer of previous positions per projectile
 
@@ -72,3 +71,4 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 - [x] **005 — Enhanced kill particles** — 16 colored + 5 white sparks per kill (d58a12f)
 - [x] **006 — Screen shake tuning** — Micro-shake on hit, kill shake, boss shake (1c66762)
 - [x] **007 — Multi-kill time dilation** — 80% speed for 100ms on 10+ kills (9c11190)
+- [x] **008 — AoE shockwave ring** — Expanding ring on frost nova, guardian ring, exploder (6dada0e)

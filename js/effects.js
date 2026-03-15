@@ -122,12 +122,22 @@ export function renderEffects(ctx, camera) {
     }
     ctx.globalAlpha = 1.0;
 
-    // Damage numbers (world space)
+    // Damage numbers (world space) with scale-in animation
     for (const d of damageNumbers) {
         const fade = 1 - (d.life / d.maxLife);
+        // Scale-in: 0.5 → 1.2 over first 0.08s, then settle to 1.0
+        let scale;
+        if (d.life < 0.04) {
+            scale = 0.5 + (d.life / 0.04) * 0.7; // 0.5 → 1.2
+        } else if (d.life < 0.12) {
+            scale = 1.2 - ((d.life - 0.04) / 0.08) * 0.2; // 1.2 → 1.0
+        } else {
+            scale = 1.0;
+        }
+        const scaledSize = Math.round(d.size * scale);
         ctx.globalAlpha = fade;
         ctx.fillStyle = d.color;
-        ctx.font = `bold ${d.size}px monospace`;
+        ctx.font = `bold ${scaledSize}px monospace`;
         ctx.textAlign = 'center';
         ctx.fillText(d.text, d.x, d.y);
     }
@@ -241,9 +251,18 @@ export function spawnHitParticles(x, y, color = '#FF4444') {
     }
 }
 
-export function spawnDamageNumber(x, y, text, color = '#FFFFFF', size = 14) {
+export function spawnDamageNumber(x, y, text, color, size) {
     if (damageNumbers.length >= MAX_DAMAGE_NUMBERS) {
         damageNumbers.shift();
+    }
+    // Auto-tier color/size by damage value if not specified
+    const dmg = typeof text === 'number' ? text : parseInt(text, 10) || 0;
+    if (!color || !size) {
+        if (dmg >= 100) { color = color || '#FF2222'; size = size || 22; }
+        else if (dmg >= 50) { color = color || '#FF8822'; size = size || 18; }
+        else if (dmg >= 25) { color = color || '#FFDD44'; size = size || 16; }
+        else if (dmg >= 10) { color = color || '#FFFFFF'; size = size || 14; }
+        else { color = color || '#CCCCCC'; size = size || 12; }
     }
     damageNumbers.push({
         x: x + randomRange(-10, 10),
