@@ -20,6 +20,10 @@ function createParticleObj() {
 
 const particlePool = createPool(createParticleObj, MAX_PARTICLES);
 
+// --- Shockwave Rings ---
+const shockwaves = [];
+const MAX_SHOCKWAVES = 10;
+
 // --- Damage Numbers ---
 const damageNumbers = [];
 const MAX_DAMAGE_NUMBERS = 60;
@@ -61,6 +65,16 @@ export function updateEffects(dt) {
         }
     }
 
+    // Shockwave rings
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const s = shockwaves[i];
+        s.life += dt;
+        s.currentRadius += s.expandSpeed * dt;
+        if (s.life >= s.maxLife) {
+            shockwaves.splice(i, 1);
+        }
+    }
+
     // Screen shake
     if (shakeDuration > 0) {
         shakeDuration -= dt;
@@ -92,6 +106,22 @@ export function renderEffects(ctx, camera) {
     });
     ctx.globalAlpha = 1.0;
 
+    // Shockwave rings (world space)
+    for (const s of shockwaves) {
+        const fade = 1 - (s.life / s.maxLife);
+        ctx.globalAlpha = fade * 0.6;
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = Math.max(1, 3 * fade);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.currentRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner fill
+        ctx.globalAlpha = fade * 0.1;
+        ctx.fillStyle = s.color;
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+
     // Damage numbers (world space)
     for (const d of damageNumbers) {
         const fade = 1 - (d.life / d.maxLife);
@@ -117,6 +147,7 @@ export function renderScreenEffects(ctx) {
 
 export function resetEffects() {
     particlePool.clear();
+    shockwaves.length = 0;
     damageNumbers.length = 0;
     shakeIntensity = 0;
     shakeDuration = 0;
@@ -236,6 +267,19 @@ export function triggerFlash(color = '#FF0000', alpha = 0.4, decay = 3) {
     flashColor = color;
     flashAlpha = alpha;
     flashDecay = decay;
+}
+
+export function spawnShockwave(x, y, maxRadius, color = '#FFFFFF') {
+    if (shockwaves.length >= MAX_SHOCKWAVES) shockwaves.shift();
+    shockwaves.push({
+        x, y,
+        currentRadius: 0,
+        maxRadius,
+        expandSpeed: maxRadius / 0.2, // reach full radius in 200ms
+        color,
+        life: 0,
+        maxLife: 0.25,
+    });
 }
 
 export function getShakeOffset() {

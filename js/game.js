@@ -15,7 +15,7 @@ import { formatTime } from './utils.js';
 import { updateEffects, resetEffects,
     spawnKillParticles, spawnBossDeathParticles, spawnHitParticles,
     spawnXPPickupFlash, spawnDamageNumber,
-    triggerShake, triggerFlash } from './effects.js';
+    triggerShake, triggerFlash, spawnShockwave } from './effects.js';
 import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
@@ -384,6 +384,7 @@ function update(dt) {
                     if (e.type === 'exploder' && e.explosionRadius > 0) {
                         playExplosion();
                         triggerShake(5, 0.2);
+                        spawnShockwave(e.x, e.y, e.explosionRadius, '#FF4422');
                         const explosionDmg = triggerExplosion(e, player);
                         if (explosionDmg > 0) {
                             damagePlayer(player, explosionDmg);
