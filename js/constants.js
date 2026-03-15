@@ -41,5 +41,8 @@ export const MAX_PROJECTILES = 500;
 export const MAX_PARTICLES = 2000;
 export const MAX_XP_GEMS = 500;
 
+// Hit feedback
+export const HIT_FLASH_DURATION = 0.05; // ~3 frames at 60fps
+
 // Spatial hash
 export const SPATIAL_CELL_SIZE = 64;

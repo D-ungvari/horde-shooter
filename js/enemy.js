@@ -33,6 +33,8 @@ function createEnemyObj() {
         // Slow/freeze
         slowTimer: 0,
         slowFactor: 1,
+        // Hit feedback
+        hitFlashTimer: 0,
         // Exploder
         explosionRadius: 0,
         explosionDamage: 0,
@@ -102,6 +104,7 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.chargeState = 'approach';
     e.chargeTimer = 0;
     e.pulseTimer = 0;
+    e.hitFlashTimer = 0;
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -132,6 +135,7 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
     e.isBoss = true;
     e.targetAngle = 0;
     e.sinePhase = 0;
+    e.hitFlashTimer = 0;
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
@@ -166,6 +170,9 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
 
 export function updateEnemies(player, dt) {
     pool.forEach(e => {
+        // Update hit flash
+        if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
+
         // Update slow
         if (e.slowTimer > 0) {
             e.slowTimer -= dt;

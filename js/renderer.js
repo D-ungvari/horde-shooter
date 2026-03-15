@@ -288,6 +288,16 @@ function drawEnemyEntity(e) {
         ctx.fill();
     }
 
+    // Hit flash overlay
+    if (e.hitFlashTimer > 0) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
     // Health bar if damaged
     if (e.health < e.maxHealth && e.health > 0) {
         const barW = e.radius * 2 + 4;

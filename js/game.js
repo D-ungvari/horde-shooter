@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, HIT_FLASH_DURATION } from './constants.js';
 import { initInput, resetFrameInput, isKeyDown, getMouse, updateCamera as updateInputCamera } from './input.js';
 import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
@@ -319,6 +319,7 @@ function update(dt) {
             if (p.hitSet.has(e._poolIndex)) continue;
             if (circlesOverlap(p, e)) {
                 e.health -= p.damage;
+                e.hitFlashTimer = HIT_FLASH_DURATION;
                 p.hitSet.add(e._poolIndex);
 
                 // Hit effects (skip for DOT zones to avoid particle spam)

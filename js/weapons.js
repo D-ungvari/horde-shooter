@@ -2,6 +2,7 @@ import { getWeaponStats } from './weaponData.js';
 import { spawnProjectile } from './projectile.js';
 import { getMouseWorld } from './input.js';
 import { getEnemyPool } from './enemy.js';
+import { HIT_FLASH_DURATION } from './constants.js';
 import { v2Normalize, v2FromAngle, v2Dist, v2Sub, angleBetween, randomRange } from './utils.js';
 import { playShoot, playShotgun, playSmg, playRocket, playLightning, playFlame, playFrostNova } from './audio.js';
 
@@ -241,6 +242,7 @@ function fireAutoChain(player, stats, damage) {
         if (!current || !current.active) break;
         hit.add(current._poolIndex);
         current.health -= chainDmg;
+        current.hitFlashTimer = HIT_FLASH_DURATION;
         chainDmg *= falloff;
 
         // Visual: spawn a short-lived lightning bolt projectile from prev to current
@@ -382,6 +384,7 @@ function updateOrbitals(player, stats, slotIndex, dt) {
             const radSum = hitRadius + e.radius;
             if (dist < radSum * radSum) {
                 e.health -= damage * dt * 3; // DPS-based damage
+                e.hitFlashTimer = HIT_FLASH_DURATION;
             }
         });
     }
@@ -402,6 +405,7 @@ function updateOrbitals(player, stats, slotIndex, dt) {
                 const dy = e.y - player.y;
                 if (dx * dx + dy * dy < pulseRadius * pulseRadius) {
                     e.health -= pulseDmg;
+                    e.hitFlashTimer = HIT_FLASH_DURATION;
                 }
             });
 
@@ -503,6 +507,7 @@ function fireAutoBurst(player, stats, damage) {
         const dy = e.y - player.y;
         if (dx * dx + dy * dy < burstRadius * burstRadius) {
             e.health -= damage;
+            e.hitFlashTimer = HIT_FLASH_DURATION;
             e.slowTimer = slowDuration;
             e.slowFactor = slowFactor;
         }
