@@ -342,6 +342,8 @@ function update(dt) {
                 // Hit effects (skip for DOT zones to avoid particle spam)
                 if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone') {
                     spawnHitParticles(e.x, e.y, e.color);
+                    // Micro-shake on hit (0.5-1px, scaled by damage)
+                    triggerShake(Math.min(1, p.damage * 0.03), 0.05);
                 }
                 spawnDamageNumber(e.x, e.y, Math.round(p.damage));
 
@@ -363,6 +365,7 @@ function update(dt) {
                     } else {
                         spawnKillParticles(e.x, e.y, e.color);
                         playEnemyDeath();
+                        triggerShake(2, 0.1);
                     }
 
                     // Exploder death AoE

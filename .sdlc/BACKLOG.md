@@ -6,7 +6,6 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 ## Up Next
 
 ### Phase 1: Juice & Impact
-- [ ] **005 — Enhanced kill particles** — 12-20 particles per kill, more dramatic
 - [ ] **006 — Screen shake tuning** — Micro-shake on hit, bigger on kill, massive on boss kill
 - [ ] **007 — Multi-kill time dilation** — 100ms at 80% speed for 10+ simultaneous kills
 - [ ] **008 — AoE shockwave ring** — Expanding translucent ring for AoE explosions
@@ -72,3 +71,4 @@ Phases from UPGRADE_PLAN.md, broken into atomic work items.
 - [x] **002 — Hit knockback system** — Per-weapon knockback values, crowd-push physics (119ccb5)
 - [x] **003 — Kill hit-stop** — 15-30ms game freeze on kills, 40ms on boss (ce34782)
 - [x] **004 — Kill death-pop animation** — Scale up 1.3x then shrink to 0 (56d527c)
+- [x] **005 — Enhanced kill particles** — 16 colored + 5 white sparks per kill (d58a12f)
