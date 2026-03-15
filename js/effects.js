@@ -544,3 +544,235 @@ export function spawnParticle(x, y, vx, vy, radius, color, maxLife, shrink = tru
     p.shrink = shrink;
     p.gravity = gravity;
 }
+
+// === Per-type enemy death effects ===
+
+export function spawnEnemyDeathEffects(enemy) {
+    const { x, y, type, isBoss, vx, vy } = enemy;
+
+    switch (type) {
+        case 'shambler':
+            _deathShambler(x, y);
+            break;
+        case 'runner':
+            _deathRunner(x, y, vx, vy);
+            break;
+        case 'bat':
+            _deathBat(x, y);
+            break;
+        case 'brute':
+            _deathBrute(x, y);
+            break;
+        case 'spitter':
+            _deathSpitter(x, y);
+            break;
+        case 'swarmer':
+            _deathSwarmer(x, y);
+            break;
+        case 'exploder':
+            _deathExploder(x, y);
+            break;
+    }
+
+    // Boss deaths get extra spectacle regardless of boss type
+    if (isBoss) {
+        _deathBoss(x, y);
+    }
+}
+
+// Shambler: slow green-brown goo particles with gravity
+function _deathShambler(x, y) {
+    const gooColors = ['#446622', '#557733', '#335511', '#668833'];
+    for (let i = 0; i < 4; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(30, 80);
+        spawnParticle(
+            x + randomRange(-4, 4), y + randomRange(-4, 4),
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            randomRange(3, 6),
+            gooColors[i % gooColors.length],
+            randomRange(0.6, 1.2),
+            true,
+            randomRange(150, 300) // heavy gravity — falls and splats
+        );
+    }
+    // Small ground mark (reuse ground scar)
+    spawnGroundScar(x, y, 12);
+}
+
+// Runner: motion-line speed burst in last movement direction
+function _deathRunner(x, y, vx, vy) {
+    // Normalize the movement direction (fallback to random if stationary)
+    let dirX = vx;
+    let dirY = vy;
+    const mag = Math.sqrt(dirX * dirX + dirY * dirY);
+    if (mag > 0.1) {
+        dirX /= mag;
+        dirY /= mag;
+    } else {
+        const a = randomRange(0, Math.PI * 2);
+        dirX = Math.cos(a);
+        dirY = Math.sin(a);
+    }
+    // 6 thin speed-line particles shooting in movement direction
+    for (let i = 0; i < 6; i++) {
+        const spread = randomRange(-0.3, 0.3);
+        const cos = Math.cos(spread);
+        const sin = Math.sin(spread);
+        const lx = dirX * cos - dirY * sin;
+        const ly = dirX * sin + dirY * cos;
+        const speed = randomRange(250, 450);
+        spawnParticle(
+            x, y,
+            lx * speed, ly * speed,
+            randomRange(1, 2), // thin
+            '#FF6666',
+            randomRange(0.1, 0.25), // fast-fading
+            true,
+            0
+        );
+    }
+}
+
+// Bat: feather particles that flutter downward
+function _deathBat(x, y) {
+    const featherColors = ['#AA44CC', '#9933BB', '#BB55DD', '#CC66EE', '#8833AA'];
+    for (let i = 0; i < 5; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(20, 60);
+        spawnParticle(
+            x + randomRange(-6, 6), y + randomRange(-6, 6),
+            Math.cos(angle) * speed, // slight sideways drift
+            randomRange(-20, 10),    // slow upward or slight downward
+            randomRange(2, 4),
+            featherColors[i % featherColors.length],
+            randomRange(0.8, 1.5),   // long-lived — slow flutter
+            true,
+            randomRange(30, 60)      // gentle gravity for downward float
+        );
+    }
+}
+
+// Brute: heavy armor fragment particles + extra screen shake
+function _deathBrute(x, y) {
+    const armorColors = ['#FF8800', '#CC6600', '#AA5500', '#BB7722'];
+    for (let i = 0; i < 4; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(60, 140);
+        spawnParticle(
+            x + randomRange(-5, 5), y + randomRange(-5, 5),
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            randomRange(5, 9),   // large fragments
+            armorColors[i % armorColors.length],
+            randomRange(0.5, 1.0),
+            true,
+            randomRange(200, 400) // heavy gravity — armor is dense
+        );
+    }
+    // Extra ground-shake on brute death (+2 intensity above standard kill shake)
+    triggerShake(4, 0.25);
+}
+
+// Spitter: toxic burst — poison cloud + green splatter
+function _deathSpitter(x, y) {
+    // Poison cloud: large translucent green circle (fading over 0.5s)
+    // Implemented as a large, non-shrinking particle that fades via life
+    spawnParticle(
+        x, y,
+        0, 0,
+        40,          // 40px radius cloud
+        '#33AA22',
+        0.5,         // 0.5s fade
+        false,       // don't shrink — let alpha fade handle it
+        0
+    );
+    // 6 green splatter particles outward
+    for (let i = 0; i < 6; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(80, 180);
+        spawnParticle(
+            x, y,
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            randomRange(2, 4),
+            '#66DD22',
+            randomRange(0.3, 0.6),
+            true,
+            randomRange(40, 120)
+        );
+    }
+}
+
+// Swarmer: tiny dots scattering in all directions very quickly
+function _deathSwarmer(x, y) {
+    for (let i = 0; i < 10; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(200, 400); // very fast scatter
+        spawnParticle(
+            x, y,
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            randomRange(0.8, 1.5), // very small
+            '#333344',
+            randomRange(0.1, 0.3), // very fast fade
+            true,
+            0
+        );
+    }
+}
+
+// Exploder: bright orange flash circle + rising ember particles
+function _deathExploder(x, y) {
+    // Orange flash circle (expanding, fading) — large non-shrinking particle
+    spawnParticle(
+        x, y,
+        0, 0,
+        35,
+        '#FF6600',
+        0.25,
+        false, // don't shrink — alpha fade handles it
+        0
+    );
+    // 5 rising ember particles
+    for (let i = 0; i < 5; i++) {
+        spawnParticle(
+            x + randomRange(-8, 8), y + randomRange(-5, 5),
+            randomRange(-20, 20),
+            randomRange(-120, -60), // rising upward
+            randomRange(1.5, 3),
+            '#FF8833',
+            randomRange(0.4, 0.8),
+            true,
+            -30 // negative gravity — embers float up
+        );
+    }
+}
+
+// Boss: screen flash, shockwave rings, gold particle fountain
+function _deathBoss(x, y) {
+    // Screen-wide white flash (0.15 alpha, fades over ~200ms → decay ~0.75/s)
+    triggerFlash('#FFFFFF', 0.15, 0.75);
+
+    // 3 expanding shockwave rings (staggered via slightly different start radii)
+    // Since we can't delay spawns, stagger by starting at different radii
+    spawnShockwave(x, y, 150, '#FFFFFF');
+    spawnShockwave(x, y, 120, '#FFD700');
+    spawnShockwave(x, y, 90, '#FFFFFF');
+
+    // Larger explosion
+    spawnExplosion(x, y, 100, '#FFD700');
+
+    // Gold particle fountain: 18 gold particles that rise then fall
+    for (let i = 0; i < 18; i++) {
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(40, 120);
+        spawnParticle(
+            x + randomRange(-10, 10), y + randomRange(-10, 10),
+            Math.cos(angle) * speed,
+            randomRange(-200, -80), // shoot upward
+            randomRange(2, 5),
+            '#FFD700',
+            randomRange(0.8, 1.5),
+            true,
+            randomRange(150, 300) // gravity pulls them back down
+        );
+    }
+}

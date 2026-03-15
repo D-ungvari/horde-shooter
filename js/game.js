@@ -18,7 +18,8 @@ import { updateEffects, resetEffects,
     triggerShake, triggerFlash, spawnShockwave,
     spawnExplosion, spawnGroundScar,
     showAnnouncement, updateAnnouncement, updateStreak,
-    incrementStreak, resetStreak } from './effects.js';
+    incrementStreak, resetStreak,
+    spawnEnemyDeathEffects } from './effects.js';
 import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
@@ -48,6 +49,7 @@ let pendingLevelUps = 0;
 let currentBiome = 'graveyard';
 let hitStopTimer = 0;
 let timeDilationTimer = 0;
+let timeDilationFactor = TIME_DILATION_FACTOR;
 let frameKillCount = 0;
 
 // Announcements (now driven by effects.js showAnnouncement)
@@ -95,6 +97,7 @@ function startPlaying() {
     pendingLevelUps = 0;
     hitStopTimer = 0;
     timeDilationTimer = 0;
+    timeDilationFactor = TIME_DILATION_FACTOR;
 
     clearEnemies();
     clearProjectiles();
@@ -130,6 +133,7 @@ function resumeRun() {
     pendingLevelUps = 0;
     hitStopTimer = 0;
     timeDilationTimer = 0;
+    timeDilationFactor = TIME_DILATION_FACTOR;
 
     camera.x = player.x;
     camera.y = player.y;
@@ -230,7 +234,10 @@ function loop(timestamp) {
                 // Time dilation: slow game after mass kills
                 if (timeDilationTimer > 0) {
                     timeDilationTimer -= dt;
-                    dt *= TIME_DILATION_FACTOR;
+                    dt *= timeDilationFactor;
+                    if (timeDilationTimer <= 0) {
+                        timeDilationFactor = TIME_DILATION_FACTOR; // reset to default
+                    }
                 }
                 survivalTime += dt;
                 update(dt);
@@ -357,6 +364,7 @@ function update(dt) {
             // Death combos (035)
             checkDeathCombos(e);
             spawnKillParticles(e.x, e.y, e.color);
+            spawnEnemyDeathEffects(e);
             playEnemyDeath();
             triggerShake(1, 0.05);
             spawnXPBurst(e.x, e.y, e.xpValue);
@@ -448,11 +456,15 @@ function update(dt) {
                     );
 
                     // Death effects + audio
+                    spawnEnemyDeathEffects(e);
                     if (e.isBoss) {
                         spawnBossDeathParticles(e.x, e.y, e.color);
                         playBossDeath();
                         triggerShake(8, 0.4);
                         triggerFlash('#FFFFFF', 0.3, 2);
+                        // Boss slow-motion: 0.3x speed for 500ms
+                        timeDilationTimer = 0.5;
+                        timeDilationFactor = 0.3;
                     } else {
                         spawnKillParticles(e.x, e.y, e.color);
                         playEnemyDeath();
@@ -638,9 +650,10 @@ function update(dt) {
         }
     });
 
-    // Multi-kill time dilation
-    if (frameKillCount >= TIME_DILATION_KILL_THRESHOLD) {
+    // Multi-kill time dilation (don't override boss slow-mo with weaker effect)
+    if (frameKillCount >= TIME_DILATION_KILL_THRESHOLD && timeDilationFactor >= TIME_DILATION_FACTOR) {
         timeDilationTimer = TIME_DILATION_DURATION;
+        timeDilationFactor = TIME_DILATION_FACTOR;
     }
 
     // Death check
