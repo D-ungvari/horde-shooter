@@ -278,11 +278,8 @@ function drawEnemyEntity(e) {
         drawGlow(ctx, e.x, e.y, e.radius * 2, '#FFD700', 0.2);
     }
 
-    // Body
-    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF4444');
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-    ctx.fill();
+    // Body (dispatches to type-specific draw fn or circle fallback)
+    drawEnemyBody(e);
 
     // Frost ring if slowed
     if (slowed) {
@@ -303,6 +300,34 @@ function drawEnemyEntity(e) {
         ctx.arc(e.x, e.y, e.radius + 2, 0, Math.PI * 2);
         ctx.stroke();
     }
+
+    // Hit flash overlay
+    if (e.hitFlashTimer > 0) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Health bar if damaged
+    if (e.health < e.maxHealth && e.health > 0) {
+        const barW = e.radius * 2 + 4;
+        drawBar(ctx, e.x - barW / 2, e.y - e.radius - 8, barW, 3,
+            e.health / e.maxHealth, '#FF3333', '#333', '#555');
+    }
+}
+
+// --- Enemy body dispatch ---
+
+function drawEnemyCircleFallback(e) {
+    // Body
+    const slowed = e.slowTimer > 0;
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF4444');
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+    ctx.fill();
 
     // Eyes facing player direction
     if (e.targetAngle !== undefined) {
@@ -325,22 +350,91 @@ function drawEnemyEntity(e) {
         ctx.arc(e.x + 3 * eyeScale + ex * 1.3, e.y - 2 * eyeScale + ey * 1.3, 1.2 * eyeScale, 0, Math.PI * 2);
         ctx.fill();
     }
+}
 
-    // Hit flash overlay
-    if (e.hitFlashTimer > 0) {
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#FFFFFF';
+function drawShambler(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const speed = e.speed || 40;
+    const walkPhase = gameTime * speed * 0.1;
+    const bodyBob = Math.sin(gameTime * speed * 0.15) * 1.5;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Legs (behind body) — 2 stumpy circles below body, alternating phase
+    const legY = r * 0.7;
+    const legR = r * 0.35;
+    ctx.fillStyle = slowed ? '#668877' : '#337733';
+    for (let side = -1; side <= 1; side += 2) {
+        const legOff = Math.sin(walkPhase + side * Math.PI * 0.5) * 3;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.arc(side * r * 0.4 + legOff, legY + bodyBob, legR, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha = 1.0;
     }
 
-    // Health bar if damaged
-    if (e.health < e.maxHealth && e.health > 0) {
-        const barW = e.radius * 2 + 4;
-        drawBar(ctx, e.x - barW / 2, e.y - e.radius - 8, barW, 3,
-            e.health / e.maxHealth, '#FF3333', '#333', '#555');
+    // Arms (dangling thin rects, slight sway)
+    const armSway = Math.sin(walkPhase * 0.7) * 0.15;
+    ctx.fillStyle = slowed ? '#88BBAA' : '#3D8B3D';
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.save();
+        ctx.translate(side * r * 0.85, -r * 0.1 + bodyBob);
+        ctx.rotate(0.4 * side + armSway * side);
+        ctx.fillRect(-2, 0, 4, r * 0.9);
+        ctx.restore();
+    }
+
+    // Main body — green ellipse, slightly wider than tall, slouching
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#44AA44');
+    ctx.beginPath();
+    ctx.ellipse(0, bodyBob, r * 1.05, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Slack jaw — small arc below body center
+    ctx.fillStyle = slowed ? '#556655' : '#2A6B2A';
+    ctx.beginPath();
+    ctx.arc(0, r * 0.45 + bodyBob, r * 0.35, 0, Math.PI);
+    ctx.fill();
+
+    // Eyes — white sclera + dark pupils facing targetAngle
+    // When flipped, targetAngle eye offset needs to respect the flip
+    const angle = e.targetAngle || 0;
+    const eyeDir = facingLeft ? Math.PI - angle : angle;
+    const eyeOff = Math.min(r * 0.3, 4);
+    const ex = Math.cos(eyeDir) * eyeOff;
+    const ey = Math.sin(eyeDir) * eyeOff;
+    const eyeScale = Math.min(r / 12, 1.5);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex, -3 * eyeScale + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex, -3 * eyeScale + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex * 1.3, -3 * eyeScale + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex * 1.3, -3 * eyeScale + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+var enemyDrawFns = {
+    shambler: drawShambler,
+};
+
+function drawEnemyBody(e) {
+    if (enemyDrawFns[e.type]) {
+        enemyDrawFns[e.type](e);
+    } else {
+        drawEnemyCircleFallback(e);
     }
 }
 
