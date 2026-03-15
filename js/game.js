@@ -4,14 +4,14 @@ import { createCamera, updateCamera, screenToWorld } from './camera.js';
 import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
 import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions, spawnPlagueSpread } from './weapons.js';
-import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
+import { updateProjectiles, getProjectilePool, clearProjectiles, spawnProjectile } from './projectile.js';
 import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, startDying, triggerExplosion, applyKnockback, applyCrowdPush, getEnemyDamageMultiplier } from './enemy.js';
 import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
 import { grantXP, recalculateStats } from './stats.js';
 import { showLevelUpScreen, hideLevelUpScreen } from './levelUp.js';
-import { formatTime } from './utils.js';
+import { formatTime, v2Dist, v2FromAngle, angleBetween } from './utils.js';
 import { updateEffects, resetEffects,
     spawnKillParticles, spawnBossDeathParticles, spawnHitParticles,
     spawnXPPickupFlash, spawnDamageNumber,
@@ -381,6 +381,10 @@ function update(dt) {
                     // Chain Lightning combo (035): arcs to 3 nearby enemies
                     triggerChainLightning(e);
                 }
+                // Burn amplification (038 — flamethrower Lv4): burning enemies take 15% more
+                if (e.burning > 0 && p.burnAmp > 0) {
+                    dmg *= (1 + p.burnAmp);
+                }
                 e.health -= dmg;
                 e.hitFlashTimer = HIT_FLASH_DURATION;
                 p.hitSet.add(e._poolIndex);
@@ -413,12 +417,12 @@ function update(dt) {
                 }
 
                 // Knockback (skip for DOT zones — they tick, not impact)
-                if (p.knockbackDist > 0 && p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone' && p.type !== 'zone') {
+                if (p.knockbackDist > 0 && p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone' && p.type !== 'zone' && p.type !== 'holywaterzone') {
                     applyKnockback(e, p.x, p.y, p.knockbackDist, p.knockbackSpeed);
                 }
 
                 // Hit effects (skip for DOT zones to avoid particle spam)
-                if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone') {
+                if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone' && p.type !== 'holywaterzone') {
                     spawnHitParticles(e.x, e.y, e.color);
                     // Micro-shake on hit (0.5-1px, scaled by damage)
                     triggerShake(Math.min(1, dmg * 0.03), 0.05);
@@ -475,8 +479,46 @@ function update(dt) {
                 }
 
                 // Pierce check (zones/DOT projectiles always pierce)
-                if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') {
+                if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot' || p.type === 'holywaterzone') {
                     // These don't consume pierce
+                    // Zone slow (038 — poison Lv4): slow enemies in zone
+                    if (p.zoneSlow > 0) {
+                        e.slowTimer = Math.max(e.slowTimer || 0, 0.6);
+                        e.slowFactor = Math.min(e.slowFactor || 1, 1 - p.zoneSlow);
+                    }
+                } else if (p.type === 'sawblade') {
+                    // Sawblade (042): redirect to nearest enemy on hit
+                    if (p.bounceCount < p.maxBounces) {
+                        p.bounceCount++;
+                        p.hitSet.add(e._poolIndex);
+                        // Find next nearest enemy (not already hit)
+                        let nextTarget = null;
+                        let nextDist = Infinity;
+                        const enemyPool = getEnemyPool();
+                        enemyPool.forEach(ne => {
+                            if (!ne.active || ne.dying) return;
+                            if (p.hitSet.has(ne._poolIndex)) return;
+                            const nd = v2Dist(p, ne);
+                            if (nd < 300 && nd < nextDist) {
+                                nextTarget = ne;
+                                nextDist = nd;
+                            }
+                        });
+                        if (nextTarget) {
+                            const angle = angleBetween(p, nextTarget);
+                            const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+                            const dir = v2FromAngle(angle);
+                            p.vx = dir.x * speed;
+                            p.vy = dir.y * speed;
+                        } else {
+                            // No more targets — expire
+                            projectilePool.release(p);
+                            break;
+                        }
+                    } else {
+                        projectilePool.release(p);
+                        break;
+                    }
                 } else if (p.pierce <= 0) {
                     // AoE explosion on impact (027) — rockets, flak, MIRV
                     if (p.aoeRadius > 0) {
@@ -497,6 +539,42 @@ function update(dt) {
                                 if (p.knockbackDist > 0) {
                                     applyKnockback(se, p.x, p.y, p.knockbackDist, p.knockbackSpeed);
                                 }
+                            }
+                        }
+
+                        // Rocket Lv4 (038): lingering fire zone on explosion
+                        if (p.lingeringFire) {
+                            spawnProjectile(p.x, p.y, 0, 0, {
+                                radius: p.aoeRadius * 0.6,
+                                damage: p.damage * 0.3,
+                                pierce: 999,
+                                lifetime: 2.0,
+                                color: '#FF4400',
+                                type: 'firezone',
+                                statusEffect: 'burning',
+                                zoneTick: 0.4,
+                                zoneTimer: 0,
+                            });
+                        }
+
+                        // Rocket Lv7 (038): fragment into mini-rockets
+                        if (p.miniRockets > 0) {
+                            for (let mr = 0; mr < p.miniRockets; mr++) {
+                                const mrAngle = (Math.PI * 2 / p.miniRockets) * mr + Math.random() * 0.3;
+                                const mrDir = v2FromAngle(mrAngle);
+                                spawnProjectile(p.x, p.y,
+                                    mrDir.x * 200, mrDir.y * 200,
+                                    {
+                                        radius: 4,
+                                        damage: p.damage * 0.4,
+                                        pierce: 0,
+                                        lifetime: 0.8,
+                                        color: '#FF6633',
+                                        aoeRadius: 30,
+                                        knockbackDist: 10,
+                                        knockbackSpeed: 200,
+                                    }
+                                );
                             }
                         }
                     }

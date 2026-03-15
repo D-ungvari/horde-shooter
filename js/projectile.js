@@ -15,7 +15,7 @@ function createProjectileObj() {
         maxLifetime: 1.0,
         color: '#FFDD44',
         aoeRadius: 0,
-        type: 'normal', // normal, flame, lightning, boomerang, zone, frostburst, firezone, chakram, plaguezone, frostdot, enemy
+        type: 'normal', // normal, flame, lightning, boomerang, zone, frostburst, firezone, chakram, plaguezone, frostdot, enemy, sawblade, holywaterzone
         // Tracking which enemies were hit (for pierce)
         hitSet: new Set(),
         // Boomerang state
@@ -46,6 +46,18 @@ function createProjectileObj() {
         trailY: new Float32Array(6),
         trailHead: 0,
         trailCount: 0,
+        // Milestone flags (038)
+        ricochet: 0,           // number of remaining ricochets off screen edge
+        lingeringFire: false,  // rocket Lv4: leave fire on explosion
+        miniRockets: 0,        // rocket Lv7: fragment count on impact
+        burnAmp: 0,            // flamethrower Lv4: burn amplification
+        // Zone milestone flags (038)
+        zoneSlow: 0,           // poison Lv4: slow factor for enemies in zone
+        // Holy water zone (041)
+        healsPlayer: false,
+        healPerTick: 0,
+        // Visual upgrades (039)
+        visualLevel: 0,        // 0=normal, 1=enhanced trail (lv3), 2=bigger+glow (lv6)
     };
 }
 
@@ -81,7 +93,7 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     p.y1 = opts.y1 || 0;
     p.x2 = opts.x2 || 0;
     p.y2 = opts.y2 || 0;
-    // Chakram
+    // Chakram / sawblade bounces
     p.bounceCount = opts.bounceCount || 0;
     p.maxBounces = opts.maxBounces || 0;
     // Plague
@@ -98,11 +110,23 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     // Trail
     p.trailHead = 0;
     p.trailCount = 0;
+    // Milestone flags (038)
+    p.ricochet = opts.ricochet || 0;
+    p.lingeringFire = opts.lingeringFire || false;
+    p.miniRockets = opts.miniRockets || 0;
+    p.burnAmp = opts.burnAmp || 0;
+    // Zone milestone flags (038)
+    p.zoneSlow = opts.zoneSlow || 0;
+    // Holy water zone (041)
+    p.healsPlayer = opts.healsPlayer || false;
+    p.healPerTick = opts.healPerTick || 0;
+    // Visual upgrades (039)
+    p.visualLevel = opts.visualLevel || 0;
     return p;
 }
 
 // Types that get trail effects (moving projectiles only)
-const TRAIL_TYPES = new Set(['normal', 'flame', 'boomerang', 'chakram', 'enemy']);
+const TRAIL_TYPES = new Set(['normal', 'flame', 'boomerang', 'chakram', 'enemy', 'sawblade']);
 
 export function updateProjectiles(dt, player) {
     pool.forEach(p => {
@@ -118,12 +142,21 @@ export function updateProjectiles(dt, player) {
 
         if (p.type === 'boomerang' || p.type === 'chakram') {
             updateBoomerang(p, dt, player);
-        } else if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone') {
+        } else if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'holywaterzone') {
             // Zones don't move, just tick
             p.zoneTimer += dt;
             if (p.zoneTimer >= p.zoneTick) {
                 p.zoneTimer -= p.zoneTick;
                 p.hitSet.clear(); // Allow re-hitting on each tick
+
+                // Holy water zone: heal player if nearby (041)
+                if (p.healsPlayer && player) {
+                    const dx = player.x - p.x;
+                    const dy = player.y - p.y;
+                    if (dx * dx + dy * dy < p.radius * p.radius) {
+                        player.health = Math.min(player.maxHealth, player.health + (p.healPerTick || 1));
+                    }
+                }
             }
         } else if (p.type === 'frostdot') {
             // Frost DOT zone: tick damage on frozen enemies nearby
@@ -133,6 +166,10 @@ export function updateProjectiles(dt, player) {
                 p.freezeDotTimer -= p.freezeDotTick;
                 p.hitSet.clear();
             }
+        } else if (p.type === 'sawblade') {
+            // Sawblade: normal movement + spinning visual handled by renderer
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
         } else {
             // Normal movement
             p.x += p.vx * dt;
@@ -146,6 +183,26 @@ export function updateProjectiles(dt, player) {
                     randomRange(2, 4), '#888888',
                     randomRange(0.3, 0.6), true, 0
                 );
+            }
+
+            // Ricochet off screen edge (038 — pistol Lv4)
+            // We use world-space bounds relative to player/camera viewport
+            if (p.ricochet > 0 && player) {
+                const margin = 512; // approximate half-viewport
+                const leftEdge = player.x - margin;
+                const rightEdge = player.x + margin;
+                const topEdge = player.y - margin;
+                const bottomEdge = player.y + margin;
+
+                if (p.x <= leftEdge || p.x >= rightEdge) {
+                    p.vx = -p.vx;
+                    p.ricochet--;
+                    p.hitSet.clear(); // can re-hit after ricochet
+                } else if (p.y <= topEdge || p.y >= bottomEdge) {
+                    p.vy = -p.vy;
+                    p.ricochet--;
+                    p.hitSet.clear();
+                }
             }
         }
 

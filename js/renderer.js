@@ -6,7 +6,7 @@ import { BIOMES } from './biomes.js';
 import { drawCircle, drawBar, drawGlow } from './drawLib.js';
 import { v2FromAngle, randomRange } from './utils.js';
 import { renderEffects, renderScreenEffects, renderGroundScars, getShakeOffset, spawnParticle } from './effects.js';
-import { getCooldowns } from './weapons.js';
+import { getCooldowns, getLastSweepState } from './weapons.js';
 import { WEAPONS, EVOLUTIONS, getWeaponStats } from './weaponData.js';
 import { PASSIVES } from './passiveData.js';
 import { drawMinimap } from './minimap.js';
@@ -49,7 +49,7 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         for (let i = 0; i < projectiles.length; i++) {
             const p = projectiles[i];
             if (!p || !p.active) continue;
-            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') {
+            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot' || p.type === 'holywaterzone') {
                 if (!isInView(camera, p.x, p.y, p.radius + 20)) continue;
                 if (p.type === 'firezone') {
                     drawFireZone(p);
@@ -57,6 +57,8 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
                     drawPlagueZone(p);
                 } else if (p.type === 'frostdot') {
                     drawFrostDotZone(p);
+                } else if (p.type === 'holywaterzone') {
+                    drawHolyWaterZone(p);
                 } else {
                     drawZone(p);
                 }
@@ -99,11 +101,17 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         for (let i = 0; i < projectiles.length; i++) {
             const p = projectiles[i];
             if (!p || !p.active) continue;
-            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') continue; // Already drawn
+            if (p.type === 'zone' || p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot' || p.type === 'holywaterzone') continue; // Already drawn
             if (!isInView(camera, p.x, p.y, Math.max(p.radius, 20) + 10)) continue;
             drawProjectileTrail(p);
             drawProjectile(p);
         }
+    }
+
+    // Whip sweep visual (040)
+    const sweep = getLastSweepState();
+    if (sweep) {
+        drawSweepArc(sweep);
     }
 
     // Particles & damage numbers (world space)
@@ -1336,14 +1344,19 @@ function drawProjectileTrail(p) {
     if (p.trailCount <= 0) return;
     // Skip trails for types that don't move or have custom visuals
     if (p.type === 'lightning' || p.type === 'frostburst' || p.type === 'zone' ||
-        p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot') return;
+        p.type === 'firezone' || p.type === 'plaguezone' || p.type === 'frostdot' ||
+        p.type === 'holywaterzone') return;
 
     const trailColor = p.color || '#FFDD44';
+    // Visual upgrade (039): Lv3+ = brighter/longer trail, Lv6+ = even more
+    const vl = p.visualLevel || 0;
+    const alphaBoost = vl >= 2 ? 0.7 : (vl >= 1 ? 0.55 : 0.4);
+
     for (let i = 0; i < p.trailCount; i++) {
         // Read from ring buffer: oldest to newest
         const idx = (p.trailHead - p.trailCount + i + 6) % 6;
         const age = (p.trailCount - i) / p.trailCount; // 1 = oldest, 0 = newest
-        const alpha = (1 - age) * 0.4;
+        const alpha = (1 - age) * alphaBoost;
         const r = p.radius * (1 - age * 0.5);
         if (alpha < 0.02) continue;
         ctx.globalAlpha = alpha;
@@ -1352,6 +1365,17 @@ function drawProjectileTrail(p) {
         ctx.arc(p.trailX[idx], p.trailY[idx], Math.max(0.5, r), 0, Math.PI * 2);
         ctx.fill();
     }
+
+    // Visual upgrade (039) Lv6+: extra glow on trail
+    if (vl >= 2 && p.trailCount > 2) {
+        const newestIdx = (p.trailHead - 1 + 6) % 6;
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = trailColor;
+        ctx.beginPath();
+        ctx.arc(p.trailX[newestIdx], p.trailY[newestIdx], p.radius * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     ctx.globalAlpha = 1.0;
 }
 
@@ -1375,17 +1399,23 @@ function drawProjectile(p) {
         case 'enemy':
             drawEnemyProjectile(p);
             return;
+        case 'sawblade':
+            drawSawblade(p);
+            return;
         default:
             drawNormalProjectile(p);
     }
 }
 
 function drawNormalProjectile(p) {
-    // Glow
-    ctx.globalAlpha = 0.25;
+    const vl = p.visualLevel || 0;
+    // Glow — intensifies with visual level (039)
+    const glowAlpha = vl >= 2 ? 0.4 : (vl >= 1 ? 0.32 : 0.25);
+    const glowMult = vl >= 2 ? 3.5 : 3;
+    ctx.globalAlpha = glowAlpha;
     ctx.fillStyle = p.color || COLOR_BULLET;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * 3, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, p.radius * glowMult, 0, Math.PI * 2);
     ctx.fill();
     // Core
     ctx.globalAlpha = 1.0;
@@ -1736,6 +1766,135 @@ function drawZone(p) {
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
     ctx.stroke();
 
+    ctx.globalAlpha = 1.0;
+}
+
+// --- Sawblade projectile (042) ---
+function drawSawblade(p) {
+    const spin = gameTime * 15; // fast spinning
+    const r = p.radius;
+
+    // Glow
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = p.color || '#CCCCCC';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Blade disc
+    ctx.globalAlpha = 1.0;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(spin);
+
+    // Outer disc
+    ctx.fillStyle = '#AAAAAA';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Teeth — 6 triangular notches
+    ctx.fillStyle = p.color || '#CCCCCC';
+    for (let i = 0; i < 6; i++) {
+        const a = (Math.PI * 2 / 6) * i;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6);
+        ctx.lineTo(Math.cos(a - 0.3) * r * 1.2, Math.sin(a - 0.3) * r * 1.2);
+        ctx.lineTo(Math.cos(a + 0.3) * r * 1.2, Math.sin(a + 0.3) * r * 1.2);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Center hole
+    ctx.fillStyle = '#666666';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// --- Holy Water zone (041) ---
+function drawHolyWaterZone(p) {
+    const fade = 1 - (p.lifetime / p.maxLifetime);
+    const pulse = 1 + Math.sin(gameTime * 3) * 0.06;
+    const r = p.radius * pulse;
+
+    // Outer glow — blue-white
+    ctx.globalAlpha = fade * 0.12;
+    ctx.fillStyle = '#88DDFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main zone
+    ctx.globalAlpha = fade * 0.2;
+    ctx.fillStyle = p.color || '#44AAFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner bright core
+    ctx.globalAlpha = fade * 0.15;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sparkle ring
+    ctx.globalAlpha = fade * 0.5;
+    ctx.strokeStyle = '#88DDFF';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 8]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, gameTime * 2 % (Math.PI * 2), gameTime * 2 % (Math.PI * 2) + Math.PI * 1.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.globalAlpha = 1.0;
+}
+
+// --- Whip sweep arc visual (040) ---
+function drawSweepArc(sweep) {
+    const t = sweep.timer / sweep.maxTimer; // 1 = just fired, 0 = gone
+    const halfArc = sweep.arc / 2;
+
+    ctx.save();
+    ctx.translate(sweep.x, sweep.y);
+
+    // Fading arc fill
+    ctx.globalAlpha = t * 0.3;
+    ctx.fillStyle = sweep.color || '#CC88FF';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, sweep.range, sweep.angle - halfArc, sweep.angle + halfArc);
+    ctx.closePath();
+    ctx.fill();
+
+    // Arc edge line
+    ctx.globalAlpha = t * 0.6;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, sweep.range, sweep.angle - halfArc, sweep.angle + halfArc);
+    ctx.stroke();
+
+    // Slash line across the arc (at the sweep range edge)
+    ctx.globalAlpha = t * 0.8;
+    ctx.strokeStyle = sweep.color || '#CC88FF';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(
+        Math.cos(sweep.angle - halfArc * 0.8) * sweep.range * 0.3,
+        Math.sin(sweep.angle - halfArc * 0.8) * sweep.range * 0.3
+    );
+    ctx.lineTo(
+        Math.cos(sweep.angle + halfArc * 0.8) * sweep.range,
+        Math.sin(sweep.angle + halfArc * 0.8) * sweep.range
+    );
+    ctx.stroke();
+
+    ctx.restore();
     ctx.globalAlpha = 1.0;
 }
 
