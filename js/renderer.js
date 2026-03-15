@@ -511,9 +511,65 @@ function drawRunner(e) {
     ctx.restore();
 }
 
+function drawBat(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const flap = Math.sin(gameTime * 8 * Math.PI * 2);
+    const hoverBob = Math.sin(gameTime * 3) * 2;
+
+    ctx.save();
+    ctx.translate(e.x, e.y + hoverBob);
+
+    // Wings — quadratic bezier, symmetric, no flip needed
+    const wingSpan = r * 2.2;
+    const wingTipY = r * 0.3;
+    const flapY = -r * 0.8 + flap * r * 0.6;
+    ctx.fillStyle = slowed ? '#7788AA' : (e.color || '#9944CC');
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.2);
+        ctx.quadraticCurveTo(side * wingSpan * 0.6, flapY, side * wingSpan, wingTipY);
+        ctx.quadraticCurveTo(side * wingSpan * 0.5, flapY + r * 0.5, 0, r * 0.4);
+        ctx.fill();
+    }
+
+    // Body — small circle
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#9944CC');
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pointed ears
+    ctx.fillStyle = slowed ? '#667799' : '#7733AA';
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.25, -r * 0.45);
+        ctx.lineTo(side * r * 0.45, -r * 1.0);
+        ctx.lineTo(side * r * 0.05, -r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Eyes — red, no pupils (bat spec: red eyes, not standard black)
+    const angle = e.targetAngle || 0;
+    const eyeOff = Math.min(r * 0.2, 3);
+    const ex = Math.cos(angle) * eyeOff;
+    const ey = Math.sin(angle) * eyeOff;
+    ctx.fillStyle = '#FF2222';
+    ctx.beginPath();
+    ctx.arc(-r * 0.2 + ex, -r * 0.1 + ey, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.2 + ex, -r * 0.1 + ey, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
 var enemyDrawFns = {
     shambler: drawShambler,
     runner: drawRunner,
+    bat: drawBat,
 };
 
 function drawEnemyBody(e) {
