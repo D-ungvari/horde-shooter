@@ -17,8 +17,6 @@ body {
 
 #game-container {
     position: relative;
-    width: 1024px;
-    height: 576px;
 }
 
 canvas {

@@ -1,3 +1,5 @@
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
+
 const keys = {};
 const mouse = { x: 0, y: 0, worldX: 0, worldY: 0, down: false, clicked: false };
 
@@ -19,8 +21,8 @@ export function initInput(canvas, camera) {
 
     canvas.addEventListener('mousemove', e => {
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+        const scaleX = CANVAS_WIDTH / rect.width;
+        const scaleY = CANVAS_HEIGHT / rect.height;
         mouse.x = (e.clientX - rect.left) * scaleX;
         mouse.y = (e.clientY - rect.top) * scaleY;
         updateWorldMouse();

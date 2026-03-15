@@ -52,9 +52,11 @@ let enemyPool, projectilePool, xpPool;
 
 export function initGame() {
     canvas = document.getElementById('game-canvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = CANVAS_WIDTH * dpr;
+    canvas.height = CANVAS_HEIGHT * dpr;
     ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
 
     camera = createCamera();
 
