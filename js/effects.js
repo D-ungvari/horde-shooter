@@ -127,23 +127,42 @@ export function resetEffects() {
 
 // === Spawn helpers ===
 
-export function spawnKillParticles(x, y, color, count = 8) {
+export function spawnKillParticles(x, y, color, count = 16) {
+    // Main burst in enemy color
     for (let i = 0; i < count; i++) {
         const p = particlePool.acquire();
         if (!p) return;
         const angle = randomRange(0, Math.PI * 2);
-        const speed = randomRange(60, 180);
+        const speed = randomRange(80, 200);
         const dir = v2FromAngle(angle);
         p.x = x + randomRange(-5, 5);
         p.y = y + randomRange(-5, 5);
         p.vx = dir.x * speed;
         p.vy = dir.y * speed;
-        p.radius = randomRange(2, 5);
+        p.radius = randomRange(2, 6);
         p.color = color;
         p.life = 0;
-        p.maxLife = randomRange(0.3, 0.7);
+        p.maxLife = randomRange(0.3, 0.8);
         p.shrink = true;
-        p.gravity = randomRange(0, 100);
+        p.gravity = randomRange(20, 120);
+    }
+    // White sparks
+    const sparkCount = Math.min(5, Math.floor(count / 3));
+    for (let i = 0; i < sparkCount; i++) {
+        const p = particlePool.acquire();
+        if (!p) return;
+        const angle = randomRange(0, Math.PI * 2);
+        const speed = randomRange(100, 250);
+        p.x = x;
+        p.y = y;
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+        p.radius = randomRange(1, 2.5);
+        p.color = '#FFFFFF';
+        p.life = 0;
+        p.maxLife = randomRange(0.15, 0.35);
+        p.shrink = true;
+        p.gravity = 0;
     }
 }
 
