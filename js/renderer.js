@@ -329,6 +329,107 @@ function drawEnemyEntity(e) {
     // Body (dispatches to type-specific draw fn or circle fallback)
     drawEnemyBody(e);
 
+    // --- Status visual indicators (034) ---
+
+    // Burning: orange tint overlay + 2 small rising particles
+    if (e.burning > 0) {
+        ctx.globalAlpha = 0.25 + e.burningStacks * 0.08;
+        ctx.fillStyle = '#FF6600';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        // Spawn occasional fire particles (throttled by randomness to keep cheap)
+        if (Math.random() < 0.15) {
+            spawnParticle(
+                e.x + randomRange(-e.radius * 0.5, e.radius * 0.5),
+                e.y - e.radius * 0.3,
+                randomRange(-10, 10), randomRange(-40, -20),
+                randomRange(1.5, 3), '#FF8833',
+                randomRange(0.2, 0.4), true, -10
+            );
+        }
+    }
+
+    // Frozen: blue tint + 4 small ice crystal lines
+    if (e.frozen > 0) {
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#88CCFF';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = '#AADDFF';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+            const a = (Math.PI * 2 / 4) * i + gameTime * 0.5;
+            const inner = e.radius * 0.7;
+            const outer = e.radius + 3;
+            ctx.beginPath();
+            ctx.moveTo(e.x + Math.cos(a) * inner, e.y + Math.sin(a) * inner);
+            ctx.lineTo(e.x + Math.cos(a) * outer, e.y + Math.sin(a) * outer);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Poisoned: green tint + occasional bubble
+    if (e.poisoned > 0) {
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = '#44FF44';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        if (Math.random() < 0.08) {
+            spawnParticle(
+                e.x + randomRange(-e.radius * 0.4, e.radius * 0.4),
+                e.y - e.radius * 0.2,
+                randomRange(-8, 8), randomRange(-30, -15),
+                randomRange(1, 2.5), '#66FF44',
+                randomRange(0.3, 0.6), true, -5
+            );
+        }
+    }
+
+    // Electrified: blue spark dots flickering around enemy
+    if (e.electrified) {
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#88CCFF';
+        for (let i = 0; i < 3; i++) {
+            const a = gameTime * 12 + i * (Math.PI * 2 / 3);
+            const sparkR = e.radius + 2 + Math.sin(gameTime * 20 + i * 2) * 3;
+            const sx = e.x + Math.cos(a) * sparkR;
+            const sy = e.y + Math.sin(a) * sparkR;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Weakened: darker tint
+    if (e.weakened > 0) {
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Frostburn combo (037): purple tint overlay
+    if (e.frostburn) {
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = '#AA44FF';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // --- End status indicators ---
+
     // Frost ring if slowed
     if (slowed) {
         ctx.strokeStyle = '#AADDFF';

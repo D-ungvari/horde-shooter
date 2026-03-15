@@ -5,7 +5,7 @@ import { createPlayer, updatePlayer, damagePlayer } from './player.js';
 import { initRenderer, renderGame, drawCrosshair } from './renderer.js';
 import { updateWeapons, resetWeaponCooldowns, getOrbitalPositions, spawnPlagueSpread } from './weapons.js';
 import { updateProjectiles, getProjectilePool, clearProjectiles } from './projectile.js';
-import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, startDying, triggerExplosion, applyKnockback, applyCrowdPush } from './enemy.js';
+import { updateEnemies, getEnemyPool, clearEnemies, releaseEnemy, startDying, triggerExplosion, applyKnockback, applyCrowdPush, getEnemyDamageMultiplier } from './enemy.js';
 import { resetSpawner, updateSpawner, getAnnouncements } from './spawner.js';
 import { clearSpatialHash, insertIntoHash, queryHash, circlesOverlap } from './physics.js';
 import { spawnXPBurst, updateXPGems, getXPPool, clearXPGems } from './xp.js';
@@ -21,6 +21,7 @@ import { playEnemyHit, playEnemyDeath, playBossDeath,
     playPlayerHit, playPlayerDeath, playLevelUp, playXPPickup,
     playBossWarning, playExplosion } from './audio.js';
 import { updateAmbient } from './background.js';
+import { checkStatusCombos, checkDeathCombos, triggerChainLightning, updateComboBanners, resetCombos, getComboBanners, getDiscoveredCombos } from './combos.js';
 import { BIOMES, BIOME_LIST } from './biomes.js';
 import { loadMeta, getGold, awardEndOfRun, isBiomeUnlocked,
     META_UPGRADES, getUpgradeLevel, getUpgradeCost, purchaseUpgrade } from './meta.js';
@@ -101,6 +102,7 @@ function startPlaying() {
     resetWeaponCooldowns();
     resetSpawner();
     resetEffects();
+    resetCombos();
     recalculateStats(player);
 
     state = STATE.PLAYING;
@@ -138,6 +140,7 @@ function resumeRun() {
     resetWeaponCooldowns();
     resetSpawner();
     resetEffects();
+    resetCombos();
     recalculateStats(player);
 
     state = STATE.PLAYING;
@@ -205,6 +208,14 @@ function loop(timestamp) {
             escapeHeld = true;
             state = STATE.PAUSED;
             document.getElementById('pause-screen').style.display = 'flex';
+            // Populate combo discoveries (036)
+            const comboEl = document.getElementById('combo-discoveries');
+            if (comboEl) {
+                const combos = getDiscoveredCombos();
+                comboEl.textContent = combos.length > 0
+                    ? 'Discoveries: ' + combos.map(c => c.replace(/_/g, ' ')).join(', ')
+                    : '';
+            }
             // Auto-save on pause
             saveRun({ player, survivalTime, biome: currentBiome });
         }
@@ -288,6 +299,9 @@ function update(dt) {
     updateSpawner(player, dt, camera);
     updateEnemies(player, dt);
 
+    // Update combo banners (036)
+    updateComboBanners(dt);
+
     // Process announcements
     const newAnnouncements = getAnnouncements();
     if (newAnnouncements.length > 0) {
@@ -329,6 +343,23 @@ function update(dt) {
     // Crowd-push (knocked-back enemies push neighbors)
     applyCrowdPush();
 
+    // Check for enemies killed by DoT status effects (033)
+    // Must be after spatial hash build so combo AoE queries work
+    enemyPool.forEach(e => {
+        if (e.dying) return;
+        if (e.health <= 0) {
+            player.killCount++;
+            frameKillCount++;
+            // Death combos (035)
+            checkDeathCombos(e);
+            spawnKillParticles(e.x, e.y, e.color);
+            playEnemyDeath();
+            triggerShake(1, 0.05);
+            spawnXPBurst(e.x, e.y, e.xpValue);
+            startDying(e);
+        }
+    });
+
     // Player projectile vs Enemy collisions
     projectilePool.forEach(p => {
         // Skip enemy projectiles — they hit the player, not enemies
@@ -342,9 +373,44 @@ function update(dt) {
             if (!e.active || e.dying) continue;
             if (p.hitSet.has(e._poolIndex)) continue;
             if (circlesOverlap(p, e)) {
-                e.health -= p.damage;
+                // Electrified damage bonus (033): +30% damage, consumed on trigger
+                let dmg = p.damage;
+                if (e.electrified) {
+                    dmg *= 1.3;
+                    e.electrified = false;
+                    // Chain Lightning combo (035): arcs to 3 nearby enemies
+                    triggerChainLightning(e);
+                }
+                e.health -= dmg;
                 e.hitFlashTimer = HIT_FLASH_DURATION;
                 p.hitSet.add(e._poolIndex);
+
+                // Apply status effect from projectile (033)
+                if (p.statusEffect) {
+                    switch (p.statusEffect) {
+                        case 'burning':
+                            e.burning = 3;
+                            e.burningStacks = Math.min(3, e.burningStacks + 1);
+                            checkStatusCombos(e, 'burning');
+                            break;
+                        case 'frozen':
+                            e.frozen = Math.max(e.frozen, 2);
+                            checkStatusCombos(e, 'frozen');
+                            break;
+                        case 'poisoned':
+                            e.poisoned = Math.max(e.poisoned, 5);
+                            checkStatusCombos(e, 'poisoned');
+                            break;
+                        case 'electrified':
+                            checkStatusCombos(e, 'electrified', { isLightningHit: true });
+                            e.electrified = true;
+                            break;
+                        case 'weakened':
+                            e.weakened = Math.max(e.weakened, 3);
+                            checkStatusCombos(e, 'weakened');
+                            break;
+                    }
+                }
 
                 // Knockback (skip for DOT zones — they tick, not impact)
                 if (p.knockbackDist > 0 && p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone' && p.type !== 'zone') {
@@ -355,13 +421,16 @@ function update(dt) {
                 if (p.type !== 'frostdot' && p.type !== 'firezone' && p.type !== 'plaguezone') {
                     spawnHitParticles(e.x, e.y, e.color);
                     // Micro-shake on hit (0.5-1px, scaled by damage)
-                    triggerShake(Math.min(1, p.damage * 0.03), 0.05);
+                    triggerShake(Math.min(1, dmg * 0.03), 0.05);
                 }
-                spawnDamageNumber(e.x, e.y, Math.round(p.damage));
+                spawnDamageNumber(e.x, e.y, Math.round(dmg));
 
                 if (e.health <= 0) {
                     player.killCount++;
                     frameKillCount++;
+
+                    // Death combos (035): Shatter, Plague Burst
+                    checkDeathCombos(e);
 
                     // Hit-stop on kill (capped to prevent cascading freezes)
                     hitStopTimer = Math.min(
@@ -463,7 +532,7 @@ function update(dt) {
     for (const e of nearPlayer) {
         if (!e.active || e.dying) continue;
         if (circlesOverlap(player, e)) {
-            const hit = damagePlayer(player, e.damage);
+            const hit = damagePlayer(player, e.damage * getEnemyDamageMultiplier(e));
             if (hit) {
                 triggerShake(3, 0.15);
                 triggerFlash('#FF0000', 0.15, 3);
@@ -557,6 +626,22 @@ function render(dt) {
         ctx.font = 'bold 28px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(activeAnnouncement, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+        ctx.textAlign = 'left';
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Combo discovery banners (036)
+    const banners = getComboBanners();
+    for (let i = 0; i < banners.length; i++) {
+        const b = banners[i];
+        const fadeIn = Math.min((b.maxTimer - b.timer) / 0.3, 1);
+        const fadeOut = Math.min(b.timer / 0.5, 1);
+        const fade = Math.min(fadeIn, fadeOut);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = '#FF8844';
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.text, CANVAS_WIDTH / 2, 70 + i * 24);
         ctx.textAlign = 'left';
         ctx.globalAlpha = 1.0;
     }

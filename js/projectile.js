@@ -36,6 +36,8 @@ function createProjectileObj() {
         freezeDotDamage: 0,
         freezeDotTick: 0,
         freezeDotTimer: 0,
+        // Status effect to apply on hit (033)
+        statusEffect: '', // 'burning', 'frozen', 'poisoned', 'electrified', 'weakened'
         // Knockback
         knockbackDist: 0,
         knockbackSpeed: 0,
@@ -88,6 +90,8 @@ export function spawnProjectile(x, y, vx, vy, opts = {}) {
     p.freezeDotDamage = opts.freezeDotDamage || 0;
     p.freezeDotTick = opts.freezeDotTick || 0;
     p.freezeDotTimer = 0;
+    // Status effect (033)
+    p.statusEffect = opts.statusEffect || '';
     // Knockback
     p.knockbackDist = opts.knockbackDist || 0;
     p.knockbackSpeed = opts.knockbackSpeed || 0;

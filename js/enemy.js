@@ -73,6 +73,16 @@ function createEnemyObj() {
         wallTargetX: 0,
         wallTargetY: 0,
         wallTimer: 0,
+        // Status effects (033)
+        burning: 0,        // timer (seconds remaining)
+        burningStacks: 0,  // 1-3 intensity
+        frozen: 0,         // timer
+        poisoned: 0,       // timer
+        electrified: false, // consumed on next hit
+        weakened: 0,       // timer
+        frostburn: false,  // combo flag: doubles DoT
+        plagueBurstImmune: false, // prevents chained plague bursts
+        stunTimer: 0,      // overload stun
     };
 }
 
@@ -138,6 +148,16 @@ export function spawnEnemy(x, y, typeId, minutesSurvived = 0, elite = false) {
     e.wallTargetX = 0;
     e.wallTargetY = 0;
     e.wallTimer = 0;
+    // Status effects reset (033)
+    e.burning = 0;
+    e.burningStacks = 0;
+    e.frozen = 0;
+    e.poisoned = 0;
+    e.electrified = false;
+    e.weakened = 0;
+    e.frostburn = false;
+    e.plagueBurstImmune = false;
+    e.stunTimer = 0;
     return e;
 }
 
@@ -175,6 +195,16 @@ function spawnBoss(x, y, bossDef, minutesSurvived) {
     e.slowTimer = 0;
     e.slowFactor = 1;
     e.bossPhase = 'normal';
+    // Status effects reset (033)
+    e.burning = 0;
+    e.burningStacks = 0;
+    e.frozen = 0;
+    e.poisoned = 0;
+    e.electrified = false;
+    e.weakened = 0;
+    e.frostburn = false;
+    e.plagueBurstImmune = false;
+    e.stunTimer = 0;
 
     // Boss-specific data
     e.slamCooldown = stats.slamCooldown || 0;
@@ -242,13 +272,61 @@ export function updateEnemies(player, dt) {
             }
         }
 
+        // --- Status effect processing (033) ---
+
+        // Burning: deal burningStacks * 3 * dt damage per frame
+        if (e.burning > 0) {
+            const burnMult = e.frostburn ? 2 : 1;
+            const burnDmg = e.burningStacks * 3 * burnMult * dt;
+            e.health -= burnDmg;
+            e.burning -= dt;
+            if (e.burning <= 0) {
+                e.burning = 0;
+                e.burningStacks = 0;
+                if (e.frostburn && e.frozen <= 0) e.frostburn = false;
+            }
+        }
+
+        // Poisoned: deal 2 * dt damage per frame
+        if (e.poisoned > 0) {
+            const poisonMult = e.frostburn ? 2 : 1;
+            const poisonDmg = 2 * poisonMult * dt;
+            e.health -= poisonDmg;
+            e.poisoned -= dt;
+            if (e.poisoned <= 0) {
+                e.poisoned = 0;
+                if (e.frostburn && e.burning <= 0) e.frostburn = false;
+            }
+        }
+
+        // Frozen: decrement timer (speed reduction applied below)
+        if (e.frozen > 0) {
+            e.frozen -= dt;
+            if (e.frozen <= 0) {
+                e.frozen = 0;
+                if (e.frostburn) e.frostburn = false;
+            }
+        }
+
+        // Weakened: decrement timer (speed + damage reduction applied in movement/combat)
+        if (e.weakened > 0) {
+            e.weakened -= dt;
+            if (e.weakened <= 0) e.weakened = 0;
+        }
+
+        // Status death check — if DoT killed the enemy
+        if (e.health <= 0) return;
+
         // Wall pattern override: march toward fixed target ignoring normal AI
         if (e.wallTimer > 0) {
             e.wallTimer -= dt;
             const angle = Math.atan2(e.wallTargetY - e.y, e.wallTargetX - e.x);
             e.targetAngle = angle;
             const dir = v2FromAngle(angle);
-            const sp = e.speed * e.slowFactor;
+            let wallSpeedMult = e.slowFactor;
+            if (e.frozen > 0) wallSpeedMult *= 0.5;
+            if (e.weakened > 0) wallSpeedMult *= 0.75;
+            const sp = e.speed * wallSpeedMult;
             e.vx = dir.x * sp;
             e.vy = dir.y * sp;
             e.x += e.vx * dt;
@@ -258,7 +336,10 @@ export function updateEnemies(player, dt) {
 
         const angle = angleBetween(e, player);
         e.targetAngle = angle;
-        const speedMult = e.slowFactor;
+        // Speed modifiers: base slow * frozen * weakened (033)
+        let speedMult = e.slowFactor;
+        if (e.frozen > 0) speedMult *= 0.5;
+        if (e.weakened > 0) speedMult *= 0.75;
 
         switch (e.ai) {
             case 'chase': chaseAI(e, player, dt, speedMult); break;
@@ -603,6 +684,14 @@ export function applyCrowdPush() {
 
 export function releaseEnemy(e) {
     pool.release(e);
+}
+
+/** Get damage multiplier for enemy considering status debuffs (033) */
+export function getEnemyDamageMultiplier(e) {
+    let mult = 1.0;
+    if (e.poisoned > 0) mult *= 0.8;   // -20% damage while poisoned
+    if (e.weakened > 0) mult *= 0.85;   // -15% damage while weakened
+    return mult;
 }
 
 export function clearEnemies() {

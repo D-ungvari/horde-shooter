@@ -6,6 +6,7 @@ import { HIT_FLASH_DURATION } from './constants.js';
 import { v2Normalize, v2FromAngle, v2Dist, v2Sub, angleBetween, randomRange } from './utils.js';
 import { playShoot, playShotgun, playSmg, playRocket, playLightning, playFlame, playFrostNova } from './audio.js';
 import { spawnShockwave, spawnExplosion, spawnGroundScar } from './effects.js';
+import { checkStatusCombos } from './combos.js';
 
 // Weapon sound dispatch
 function playWeaponSound(weaponId) {
@@ -185,6 +186,7 @@ function fireAimedCone(player, stats, mouseWorld, damage, pierce, lifetime) {
                 lifetime: lifetime * randomRange(0.7, 1.3),
                 color: stats.color,
                 type: 'flame',
+                statusEffect: 'burning', // (033)
                 knockbackDist: stats.knockbackDist || 0,
                 knockbackSpeed: stats.knockbackSpeed || 0,
             }
@@ -209,6 +211,7 @@ function fireAimedCone(player, stats, mouseWorld, damage, pierce, lifetime) {
                 lifetime: lingerDuration,
                 color: '#FF4400',
                 type: 'firezone',
+                statusEffect: 'burning', // (033)
                 zoneTick: 0.4,
                 zoneTimer: 0,
             });
@@ -248,6 +251,9 @@ function fireAutoChain(player, stats, damage) {
     for (let i = 0; i < chainCount + 1; i++) {
         if (!current || !current.active) break;
         hit.add(current._poolIndex);
+        // Overload check: if already electrified and hit by lightning again (033/035)
+        checkStatusCombos(current, 'electrified', { isLightningHit: true });
+        current.electrified = true;
         current.health -= chainDmg;
         current.hitFlashTimer = HIT_FLASH_DURATION;
         chainDmg *= falloff;
@@ -356,6 +362,7 @@ function fireAutoBoomerang(player, stats, damage, lifetime) {
             lifetime: lifetime,
             color: stats.color,
             type: isChakram ? 'chakram' : 'boomerang',
+            statusEffect: 'weakened', // (033)
             ownerX: player.x,
             ownerY: player.y,
             bounceCount: 0,
@@ -394,6 +401,11 @@ function updateOrbitals(player, stats, slotIndex, dt) {
             if (dist < radSum * radSum) {
                 e.health -= damage * dt * 3; // DPS-based damage
                 e.hitFlashTimer = HIT_FLASH_DURATION;
+                // Apply weakened status (033)
+                if (e.weakened <= 0) {
+                    e.weakened = 3;
+                    checkStatusCombos(e, 'weakened');
+                }
                 // Only apply knockback if not already being knocked back (avoid continuous jitter)
                 if (e.knockbackTimer <= 0 && (stats.knockbackDist || 0) > 0) {
                     applyKnockback(e, ox, oy, stats.knockbackDist, stats.knockbackSpeed);
@@ -419,6 +431,9 @@ function updateOrbitals(player, stats, slotIndex, dt) {
                 if (dx * dx + dy * dy < pulseRadius * pulseRadius) {
                     e.health -= pulseDmg;
                     e.hitFlashTimer = HIT_FLASH_DURATION;
+                    // Apply weakened status (033)
+                    e.weakened = Math.max(e.weakened, 3);
+                    checkStatusCombos(e, 'weakened');
                     if ((stats.knockbackDist || 0) > 0) {
                         applyKnockback(e, player.x, player.y, stats.knockbackDist, stats.knockbackSpeed);
                     }
@@ -491,6 +506,7 @@ function fireAutoZone(player, stats, damage) {
         lifetime: duration,
         color: stats.color || '#66FF44',
         type: isPlague ? 'plaguezone' : 'zone',
+        statusEffect: 'poisoned', // (033)
         zoneTick: stats.zoneTick || 0.5,
         zoneTimer: 0,
         isPlague: isPlague,
@@ -507,6 +523,7 @@ export function spawnPlagueSpread(x, y, damage, radius, duration) {
         lifetime: duration,
         color: '#88FF22',
         type: 'plaguezone',
+        statusEffect: 'poisoned', // (033)
         zoneTick: 0.4,
         zoneTimer: 0,
         isPlague: true,
@@ -534,6 +551,9 @@ function fireAutoBurst(player, stats, damage) {
             }
             e.slowTimer = slowDuration;
             e.slowFactor = slowFactor;
+            // Apply frozen status (033)
+            e.frozen = Math.max(e.frozen, 2);
+            checkStatusCombos(e, 'frozen');
         }
     });
 
@@ -572,6 +592,7 @@ function fireAutoBurst(player, stats, damage) {
             lifetime: dotDuration,
             color: '#66CCFF',
             type: 'frostdot',
+            statusEffect: 'frozen', // (033)
             freezeDotDamage: dotDamage,
             freezeDotTick: stats.freezeDotTick || 0.5,
             zoneTick: stats.freezeDotTick || 0.5,
