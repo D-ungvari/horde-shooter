@@ -426,8 +426,94 @@ function drawShambler(e) {
     ctx.restore();
 }
 
+function drawRunner(e) {
+    const slowed = e.slowTimer > 0;
+    const r = e.radius;
+    const speed = e.speed || 120;
+    const walkPhase = gameTime * speed * 0.15;
+    const bodyBob = Math.sin(walkPhase * 1.2) * 1;
+    const facingLeft = e.targetAngle !== undefined && Math.cos(e.targetAngle) < 0;
+
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (facingLeft) ctx.scale(-1, 1);
+
+    // Forward lean tilt
+    ctx.rotate(0.25);
+
+    // Legs (behind body) — long rects, exaggerated stride
+    const legLen = r * 1.3;
+    const legW = r * 0.22;
+    ctx.fillStyle = slowed ? '#886666' : '#AA2222';
+    for (let side = -1; side <= 1; side += 2) {
+        const legSwing = Math.sin(walkPhase + side * Math.PI * 0.5) * 0.5;
+        ctx.save();
+        ctx.translate(side * r * 0.3, r * 0.3 + bodyBob);
+        ctx.rotate(legSwing * side);
+        ctx.fillRect(-legW / 2, 0, legW, legLen);
+        ctx.restore();
+    }
+
+    // Main body — tall thin ellipse (opposite of Shambler's wide body)
+    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF4444');
+    ctx.beginPath();
+    ctx.ellipse(0, bodyBob, r * 0.65, r * 1.0, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pointed ears — 2 small triangles on top of head
+    ctx.fillStyle = slowed ? '#886666' : '#CC3333';
+    for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(side * r * 0.35, -r * 0.8 + bodyBob);
+        ctx.lineTo(side * r * 0.55, -r * 1.3 + bodyBob);
+        ctx.lineTo(side * r * 0.15, -r * 0.85 + bodyBob);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Sharp teeth — 3 small triangles along a mouth arc at the front
+    ctx.fillStyle = '#FFFFFF';
+    for (let i = -1; i <= 1; i++) {
+        const toothX = r * 0.35 + i * r * 0.12;
+        const toothY = r * 0.25 + bodyBob;
+        ctx.beginPath();
+        ctx.moveTo(toothX - 2, toothY);
+        ctx.lineTo(toothX, toothY + 5);
+        ctx.lineTo(toothX + 2, toothY);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Eyes — white sclera + dark pupils tracking targetAngle
+    const angle = e.targetAngle || 0;
+    const eyeDir = facingLeft ? Math.PI - angle : angle;
+    const eyeOff = Math.min(r * 0.3, 4);
+    const ex = Math.cos(eyeDir) * eyeOff;
+    const ey = Math.sin(eyeDir) * eyeOff;
+    const eyeScale = Math.min(r / 12, 1.5);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex, -3 * eyeScale + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex, -3 * eyeScale + ey + bodyBob, 2.5 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-3 * eyeScale + ex * 1.3, -3 * eyeScale + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(3 * eyeScale + ex * 1.3, -3 * eyeScale + ey * 1.3 + bodyBob, 1.2 * eyeScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
 var enemyDrawFns = {
     shambler: drawShambler,
+    runner: drawRunner,
 };
 
 function drawEnemyBody(e) {
