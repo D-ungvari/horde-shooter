@@ -1,8 +1,17 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
 import { BIOMES } from './biomes.js';
 import { randomRange } from './utils.js';
+import { getActiveHazards } from './hazards.js';
 
 const TILE_SIZE = 64;
+
+function hexToRgba(hex, a) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0,2), 16);
+    const g = parseInt(h.slice(2,4), 16);
+    const b = parseInt(h.slice(4,6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+}
 
 // Pre-generate a noise grid for ground variation
 const NOISE_SIZE = 64;
@@ -219,7 +228,7 @@ function drawGraveyardProps(ctx, wx, wy, n, n2, n3, propColors) {
     // Fog wisps: n > 0.55 && n < 0.6
     if (n > 0.55 && n < 0.6) {
         ctx.fillStyle = propColors.glow;
-        ctx.globalAlpha = 0.06;
+        ctx.globalAlpha = 0.18;
         ctx.beginPath();
         ctx.ellipse(wx + 10 + n2 * 40, wy + 45 + n3 * 10, 18 + n * 10, 3, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -265,7 +274,7 @@ function drawVolcanoProps(ctx, wx, wy, n, n2, n3, propColors) {
         const py = wy + 20 + n3 * 20;
         const pr = 4 + n * 5;
         // Outer glow
-        ctx.globalAlpha = 0.08;
+        ctx.globalAlpha = 0.18;
         ctx.fillStyle = propColors.glow;
         ctx.beginPath();
         ctx.arc(px, py, pr + 4, 0, Math.PI * 2);
@@ -340,7 +349,7 @@ function drawVolcanoProps(ctx, wx, wy, n, n2, n3, propColors) {
     // Ember glow spots: n2 > 0.7 && n2 < 0.76
     if (n2 > 0.7 && n2 < 0.76) {
         ctx.fillStyle = propColors.glow;
-        ctx.globalAlpha = 0.06;
+        ctx.globalAlpha = 0.16;
         ctx.beginPath();
         ctx.arc(wx + 30 + n * 20, wy + 30 + n3 * 20, 8 + n2 * 5, 0, Math.PI * 2);
         ctx.fill();
@@ -357,7 +366,7 @@ function drawVoidProps(ctx, wx, wy, n, n2, n3, propColors) {
         const cy = wy + 15 + n3 * 25;
         const csize = 4 + n * 5;
         // Glow behind crystal
-        ctx.globalAlpha = 0.08;
+        ctx.globalAlpha = 0.22;
         ctx.fillStyle = propColors.glow;
         ctx.beginPath();
         ctx.arc(cx, cy, csize + 4, 0, Math.PI * 2);
@@ -436,7 +445,7 @@ function drawVoidProps(ctx, wx, wy, n, n2, n3, propColors) {
 
     // Floating debris: n2 > 0.85
     if (n2 > 0.85) {
-        ctx.globalAlpha = 0.15 + n3 * 0.15;
+        ctx.globalAlpha = 0.30 + n3 * 0.15;
         ctx.fillStyle = propColors.stone;
         const dx = wx + 10 + n * 40;
         const dy = wy + 10 + n3 * 40;
@@ -452,7 +461,7 @@ function drawVoidProps(ctx, wx, wy, n, n2, n3, propColors) {
     if (n > 0.4 && n < 0.44) {
         ctx.strokeStyle = propColors.rune;
         ctx.lineWidth = 0.5;
-        ctx.globalAlpha = 0.1;
+        ctx.globalAlpha = 0.22;
         const rcx = wx + TILE_SIZE * 0.5;
         const rcy = wy + TILE_SIZE * 0.5;
         const rr = 8 + n2 * 6;
@@ -499,7 +508,7 @@ function drawVoidProps(ctx, wx, wy, n, n2, n3, propColors) {
 function drawTileVariation(ctx, wx, wy, n, n2, tileColors) {
     // Draw a subtle shade variation circle/rect within the tile
     // This breaks up the perfectly uniform tile squares
-    const varAlpha = 0.04 + n2 * 0.04;
+    const varAlpha = 0.08 + n2 * 0.08;
     ctx.globalAlpha = varAlpha;
     const altIdx = Math.floor(n2 * tileColors.length);
     ctx.fillStyle = tileColors[altIdx];
@@ -513,6 +522,94 @@ function drawTileVariation(ctx, wx, wy, n, n2, tileColors) {
     } else {
         // Rect variation
         ctx.fillRect(vx - 8, vy - 6, 16 + n2 * 10, 12 + n * 8);
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+function drawLavaHazard(ctx, h) {
+    const t = h.life / h.maxLife;
+    const pulse = 0.65 + Math.sin((h.life * 9) + h.intensity) * 0.35;
+
+    ctx.globalAlpha = (1 - t) * 0.55;
+    ctx.strokeStyle = '#FF5522';
+    ctx.lineWidth = 2 + pulse * 2;
+    ctx.beginPath();
+    const seg = 8;
+    for (let i = 0; i <= seg; i++) {
+        const p = i / seg;
+        const x = h.x - h.radius + p * h.radius * 2;
+        const y = h.y + Math.sin((p * Math.PI * 3) + h.intensity * 2) * (h.radius * 0.25);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.globalAlpha = (1 - t) * 0.2;
+    ctx.fillStyle = '#FFAA44';
+    for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = randomRange(0, h.radius * 0.45);
+        ctx.beginPath();
+        ctx.arc(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r, randomRange(1, 2.2), 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawFogHazard(ctx, h) {
+    const t = h.life / h.maxLife;
+    const alpha = (1 - t) * 0.22;
+    const puffs = 6;
+    for (let i = 0; i < puffs; i++) {
+        const ang = (Math.PI * 2 / puffs) * i + h.life * 0.25;
+        const r = h.radius * (0.35 + (i % 2) * 0.18);
+        const px = h.x + Math.cos(ang) * (h.radius * 0.3);
+        const py = h.y + Math.sin(ang) * (h.radius * 0.24);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#B4B8B4';
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawRiftHazard(ctx, h) {
+    const t = h.life / h.maxLife;
+    const fade = 1 - t;
+    const spin = h.life * 3;
+
+    ctx.globalAlpha = fade * 0.42;
+    ctx.fillStyle = '#1C103A';
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, h.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#8D7BFF';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = fade * 0.7;
+    for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, h.radius * (0.4 + i * 0.22), spin + i, spin + i + Math.PI * 1.1);
+        ctx.stroke();
+    }
+
+    ctx.globalAlpha = fade * 0.35;
+    ctx.fillStyle = '#EEE8FF';
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, h.radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawHazards(ctx) {
+    const hazards = getActiveHazards();
+    for (let i = 0; i < hazards.length; i++) {
+        const h = hazards[i];
+        if (h.type === 'lava_crack') {
+            drawLavaHazard(ctx, h);
+        } else if (h.type === 'graveyard_fog') {
+            drawFogHazard(ctx, h);
+        } else if (h.type === 'void_rift') {
+            drawRiftHazard(ctx, h);
+        }
     }
     ctx.globalAlpha = 1.0;
 }
@@ -566,4 +663,15 @@ export function drawBackground(ctx, camera, biomeId) {
             }
         }
     }
+
+    // Atmospheric fog overlay (biome-tinted depth)
+    const fogColor = biomeDef.propColors.glow || '#446644';
+    const cx = camera.x, cy = camera.y;
+    const fogGrad = ctx.createRadialGradient(cx, cy, 50, cx, cy, Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.7);
+    fogGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    fogGrad.addColorStop(1, hexToRgba(fogColor, 0.18));
+    ctx.fillStyle = fogGrad;
+    ctx.fillRect(cx - CANVAS_WIDTH, cy - CANVAS_HEIGHT, CANVAS_WIDTH * 2, CANVAS_HEIGHT * 2);
+
+    drawHazards(ctx);
 }

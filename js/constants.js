@@ -19,14 +19,16 @@ export const XP_EXPONENT = 1.5;
 
 // Colors
 export const COLOR_BG = '#1a1a2e';
-export const COLOR_PLAYER = '#4488EE';
-export const COLOR_PLAYER_DARK = '#2266CC';
-export const COLOR_BULLET = '#FFDD44';
-export const COLOR_XP_SMALL = '#44FF88';
-export const COLOR_XP_MEDIUM = '#22DDAA';
-export const COLOR_XP_LARGE = '#44EEFF';
+export const COLOR_PLAYER = '#5AB8FF';
+export const COLOR_PLAYER_DARK = '#1E5FB8';
+export const COLOR_BULLET = '#FFE94A';
+export const COLOR_BULLET_CORE = '#FFFFE0';
+export const COLOR_XP_SMALL = '#5CFFA0';
+export const COLOR_XP_MEDIUM = '#3DEEC0';
+export const COLOR_XP_LARGE = '#6FF5FF';
 export const COLOR_GOLD = '#FFD700';
-export const COLOR_HEALTH_PICKUP = '#FF4466';
+export const COLOR_HEALTH_PICKUP = '#FF5577';
+export const COLOR_GLOW_WARM = '#FFB347';
 
 // Spawner
 export const SPAWN_DISTANCE_MIN = 500;
@@ -40,6 +42,7 @@ export const MAX_ENEMIES = 1200;
 export const MAX_PROJECTILES = 500;
 export const MAX_PARTICLES = 2500;
 export const MAX_XP_GEMS = 800;
+export const MAX_PICKUPS = 32;
 
 // Hit feedback
 export const HIT_FLASH_DURATION = 0.05; // ~3 frames at 60fps

@@ -2,6 +2,16 @@
 import { createPool } from './objectPool.js';
 import { MAX_PARTICLES, CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
 import { randomRange, v2FromAngle } from './utils.js';
+import { getSettings } from './settings.js';
+
+function mixHex(a, b, t) {
+    if (!a || a[0] !== '#' || a.length < 7) return a;
+    if (!b || b[0] !== '#' || b.length < 7) return b;
+    const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+    const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+    const r = Math.round(ar + (br-ar)*t), g = Math.round(ag + (bg-ag)*t), bl = Math.round(ab + (bb-ab)*t);
+    return '#' + [r,g,bl].map(v => v.toString(16).padStart(2,'0')).join('');
+}
 
 // --- Particle Pool ---
 function createParticleObj() {
@@ -38,6 +48,7 @@ let shakeOffsetY = 0;
 let flashColor = '#FFFFFF';
 let flashAlpha = 0;
 let flashDecay = 3;
+let fogOverlayAlpha = 0;
 
 // --- Explosions (027) ---
 const explosions = [];
@@ -46,6 +57,14 @@ const MAX_EXPLOSIONS = 15;
 // --- Ground Scars (032) ---
 const groundScars = [];
 const MAX_GROUND_SCARS = 30;
+
+function getParticleScale() {
+    return Math.max(0, getSettings().particleScale ?? 1);
+}
+
+function scaledCount(baseCount, minCount = 1) {
+    return Math.max(minCount, Math.round(baseCount * getParticleScale()));
+}
 
 // === Public API ===
 
@@ -168,7 +187,14 @@ export function renderEffects(ctx, camera) {
         const fade = 1 - (p.life / p.maxLife);
         const r = p.shrink ? p.radius * fade : p.radius;
         ctx.globalAlpha = fade;
-        ctx.fillStyle = p.color;
+        const lifeFrac = p.life / p.maxLife;
+        let drawColor = p.color;
+        if (lifeFrac > 0.7) {
+            // mix toward white in last 30% of life
+            const t = (lifeFrac - 0.7) / 0.3 * 0.6;
+            drawColor = mixHex(p.color, '#FFFFFF', t);
+        }
+        ctx.fillStyle = drawColor;
         ctx.beginPath();
         ctx.arc(p.x, p.y, Math.max(0.5, r), 0, Math.PI * 2);
         ctx.fill();
@@ -215,6 +241,13 @@ export function renderEffects(ctx, camera) {
 }
 
 export function renderScreenEffects(ctx) {
+    if (fogOverlayAlpha > 0) {
+        ctx.fillStyle = '#5E6064';
+        ctx.globalAlpha = Math.min(0.25, fogOverlayAlpha);
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.globalAlpha = 1.0;
+    }
+
     // Screen flash (screen space — called after camera restore)
     if (flashAlpha > 0) {
         ctx.fillStyle = flashColor;
@@ -235,16 +268,23 @@ export function resetEffects() {
     shakeOffsetX = 0;
     shakeOffsetY = 0;
     flashAlpha = 0;
+    fogOverlayAlpha = 0;
     announcement = null;
     killStreak = 0;
     streakDisplayTimer = 0;
 }
 
+export function setFogOverlayAlpha(alpha) {
+    fogOverlayAlpha = Math.max(0, Math.min(1, alpha || 0));
+}
+
 // === Spawn helpers ===
 
-export function spawnKillParticles(x, y, color, count = 16) {
+export function spawnKillParticles(x, y, color, count = 22) {
+    const scaled = scaledCount(count, 2);
+
     // Main burst in enemy color
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < scaled; i++) {
         const p = particlePool.acquire();
         if (!p) return;
         const angle = randomRange(0, Math.PI * 2);
@@ -262,7 +302,7 @@ export function spawnKillParticles(x, y, color, count = 16) {
         p.gravity = randomRange(20, 120);
     }
     // White sparks
-    const sparkCount = Math.min(5, Math.floor(count / 3));
+    const sparkCount = Math.min(5, Math.max(1, Math.floor(scaled / 3)));
     for (let i = 0; i < sparkCount; i++) {
         const p = particlePool.acquire();
         if (!p) return;
@@ -288,7 +328,8 @@ export function spawnBossDeathParticles(x, y, color) {
 }
 
 export function spawnXPPickupFlash(x, y) {
-    for (let i = 0; i < 3; i++) {
+    const count = scaledCount(3, 1);
+    for (let i = 0; i < count; i++) {
         const p = particlePool.acquire();
         if (!p) return;
         const angle = randomRange(0, Math.PI * 2);
@@ -307,7 +348,8 @@ export function spawnXPPickupFlash(x, y) {
 }
 
 export function spawnHitParticles(x, y, color = '#FF4444') {
-    for (let i = 0; i < 4; i++) {
+    const count = scaledCount(6, 1);
+    for (let i = 0; i < count; i++) {
         const p = particlePool.acquire();
         if (!p) return;
         const angle = randomRange(0, Math.PI * 2);
@@ -326,6 +368,7 @@ export function spawnHitParticles(x, y, color = '#FF4444') {
 }
 
 export function spawnDamageNumber(x, y, text, color, size) {
+    if (!getSettings().damageNumbersEnabled) return;
     if (damageNumbers.length >= MAX_DAMAGE_NUMBERS) {
         damageNumbers.shift();
     }
@@ -352,11 +395,13 @@ export function spawnDamageNumber(x, y, text, color, size) {
 // === Screen effects ===
 
 export function triggerShake(intensity = 5, duration = 0.2) {
-    shakeIntensity = Math.max(shakeIntensity, intensity);
+    const shakeScale = Math.max(0, getSettings().shakeScale ?? 1);
+    shakeIntensity = Math.max(shakeIntensity, intensity * shakeScale);
     shakeDuration = Math.max(shakeDuration, duration);
 }
 
 export function triggerFlash(color = '#FF0000', alpha = 0.4, decay = 3) {
+    if (!getSettings().flashEnabled) return;
     flashColor = color;
     flashAlpha = alpha;
     flashDecay = decay;
@@ -388,8 +433,8 @@ export function spawnExplosion(x, y, radius, color) {
         life: 0,
         maxLife: 0.2,
     });
-    // 4-8 debris particles outward from center
-    const debrisCount = 4 + Math.floor(Math.random() * 5);
+    // 6-11 debris particles outward from center
+    const debrisCount = scaledCount(6 + Math.floor(Math.random() * 6), 1);
     for (let i = 0; i < debrisCount; i++) {
         const p = particlePool.acquire();
         if (!p) break;
@@ -583,7 +628,7 @@ export function spawnEnemyDeathEffects(enemy) {
 // Shambler: slow green-brown goo particles with gravity
 function _deathShambler(x, y) {
     const gooColors = ['#446622', '#557733', '#335511', '#668833'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < scaledCount(4, 1); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(30, 80);
         spawnParticle(
@@ -615,7 +660,7 @@ function _deathRunner(x, y, vx, vy) {
         dirY = Math.sin(a);
     }
     // 6 thin speed-line particles shooting in movement direction
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < scaledCount(6, 1); i++) {
         const spread = randomRange(-0.3, 0.3);
         const cos = Math.cos(spread);
         const sin = Math.sin(spread);
@@ -637,7 +682,7 @@ function _deathRunner(x, y, vx, vy) {
 // Bat: feather particles that flutter downward
 function _deathBat(x, y) {
     const featherColors = ['#AA44CC', '#9933BB', '#BB55DD', '#CC66EE', '#8833AA'];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < scaledCount(5, 1); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(20, 60);
         spawnParticle(
@@ -656,7 +701,7 @@ function _deathBat(x, y) {
 // Brute: heavy armor fragment particles + extra screen shake
 function _deathBrute(x, y) {
     const armorColors = ['#FF8800', '#CC6600', '#AA5500', '#BB7722'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < scaledCount(4, 1); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(60, 140);
         spawnParticle(
@@ -687,7 +732,7 @@ function _deathSpitter(x, y) {
         0
     );
     // 6 green splatter particles outward
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < scaledCount(6, 1); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(80, 180);
         spawnParticle(
@@ -704,7 +749,7 @@ function _deathSpitter(x, y) {
 
 // Swarmer: tiny dots scattering in all directions very quickly
 function _deathSwarmer(x, y) {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < scaledCount(10, 2); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(200, 400); // very fast scatter
         spawnParticle(
@@ -732,7 +777,7 @@ function _deathExploder(x, y) {
         0
     );
     // 5 rising ember particles
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < scaledCount(5, 1); i++) {
         spawnParticle(
             x + randomRange(-8, 8), y + randomRange(-5, 5),
             randomRange(-20, 20),
@@ -761,7 +806,7 @@ function _deathBoss(x, y) {
     spawnExplosion(x, y, 100, '#FFD700');
 
     // Gold particle fountain: 18 gold particles that rise then fall
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < scaledCount(18, 4); i++) {
         const angle = randomRange(0, Math.PI * 2);
         const speed = randomRange(40, 120);
         spawnParticle(

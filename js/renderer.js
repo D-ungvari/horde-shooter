@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, COLOR_PLAYER, COLOR_PLAYER_DARK, COLOR_BULLET, DEATH_ANIM_DURATION, DEATH_ANIM_EXPAND_PHASE } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, COLOR_PLAYER, COLOR_PLAYER_DARK, COLOR_BULLET, COLOR_BULLET_CORE, COLOR_GLOW_WARM, DEATH_ANIM_DURATION, DEATH_ANIM_EXPAND_PHASE } from './constants.js';
 import { applyCamera, isInView } from './camera.js';
 import { getMouse } from './input.js';
 import { drawBackground, drawAmbientParticles } from './background.js';
@@ -33,7 +33,27 @@ export function initRenderer(context) {
     ctx = context;
 }
 
-export function renderGame(camera, player, enemies, projectiles, xpGems, dt, state, orbitals, biomeId) {
+// --- Visual polish helpers (gradient body fills, color mixing) ---
+function mixColor(a, b, t) {
+    const ah = a.replace('#', '');
+    const bh = b.replace('#', '');
+    const ar = parseInt(ah.slice(0, 2), 16), ag = parseInt(ah.slice(2, 4), 16), ab = parseInt(ah.slice(4, 6), 16);
+    const br = parseInt(bh.slice(0, 2), 16), bg = parseInt(bh.slice(2, 4), 16), bb = parseInt(bh.slice(4, 6), 16);
+    const r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), bl = Math.round(ab + (bb - ab) * t);
+    return '#' + [r, g, bl].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function makeBodyGradient(ctx, x, y, r, color) {
+    const lighter = mixColor(color, '#FFFFFF', 0.35);
+    const darker = mixColor(color, '#000000', 0.30);
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+    g.addColorStop(0, lighter);
+    g.addColorStop(0.55, color);
+    g.addColorStop(1, darker);
+    return g;
+}
+
+export function renderGame(camera, player, enemies, projectiles, xpGems, pickups, dt, state, orbitals, biomeId) {
     gameTime += dt || 1 / 60;
     _player = player;
 
@@ -89,6 +109,16 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
         }
     }
 
+    // Pickups (health/bomb/magnet) above XP, below enemies
+    if (pickups) {
+        for (let i = 0; i < pickups.length; i++) {
+            const pickup = pickups[i];
+            if (!pickup || !pickup.active) continue;
+            if (!isInView(camera, pickup.x, pickup.y, 40)) continue;
+            drawPickup(pickup);
+        }
+    }
+
     // Enemies
     if (enemies) {
         for (let i = 0; i < enemies.length; i++) {
@@ -105,6 +135,9 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
             drawOrbital(orb);
         }
     }
+
+    // Dash trail (draw behind player body)
+    drawDashAfterimages(player);
 
     // Player
     drawPlayerEntity(player);
@@ -139,6 +172,7 @@ export function renderGame(camera, player, enemies, projectiles, xpGems, dt, sta
     // Vignette (darken edges, danger pulse at low HP)
     if (player) {
         drawVignette(player.health / player.maxHealth);
+        drawFogOverlay(player);
     }
 
     // Announcement banner (after vignette, before HUD)
@@ -183,7 +217,39 @@ function drawVignette(hpRatio) {
     }
 }
 
+function drawFogOverlay(player) {
+    if (!player || player.inFogTimer <= 0) return;
+    ctx.fillStyle = '#AEB8B0';
+    ctx.globalAlpha = 0.25;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.globalAlpha = 1.0;
+}
+
 // --- Entity drawing ---
+function drawDashAfterimages(player) {
+    if (!player || !player.afterimages || player.afterimages.length === 0) return;
+
+    const len = player.afterimages.length;
+    const radius = player.radius || 10;
+
+    for (let i = 0; i < len; i++) {
+        const img = player.afterimages[i];
+        const t = len <= 1 ? 1 : i / (len - 1);
+        const alpha = 0.1 + t * 0.3;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = COLOR_PLAYER;
+        ctx.beginPath();
+        ctx.arc(img.x, img.y, radius * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = COLOR_PLAYER_DARK;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1.0;
+}
 
 // Map evolution IDs back to base weapon family for visuals
 const EVOLUTION_TO_BASE = {};
@@ -1143,6 +1209,25 @@ function drawPlayerEntity(player) {
     ctx.ellipse(x, y + radius + 5, radius * 1.0, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // --- Player tint glow (subtle player-color rim around figure) ---
+    // Skipped during invincibility blink to avoid doubling brightness on flicker.
+    const playerBlink = invincible > 0 && Math.floor(invincible * 10) % 2 === 0;
+    if (!playerBlink) {
+        const pGrad = ctx.createRadialGradient(x - 4, y - 4, 1, x, y, radius * 1.6);
+        pGrad.addColorStop(0, 'rgba(159,224,255,0.18)');
+        pGrad.addColorStop(0.5, 'rgba(90,184,255,0.10)');
+        pGrad.addColorStop(1, 'rgba(30,95,184,0.0)');
+        ctx.fillStyle = pGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        // Tiny top-left highlight on the body silhouette
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.arc(x - radius * 0.4, y - radius * 0.4, radius * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     // =========================================
     // --- LEGS (proper 2-segment walk cycle) ---
     // =========================================
@@ -1559,8 +1644,8 @@ function drawEnemyEntity(e) {
         ctx.translate(e.x, e.y);
         ctx.scale(scale, scale);
         ctx.globalAlpha = 0.3 + spawnT * 0.7; // fade in
-        // Draw simplified body (just circle)
-        ctx.fillStyle = e.color || '#FF4444';
+        // Draw simplified body (just circle, with gradient)
+        ctx.fillStyle = makeBodyGradient(ctx, 0, 0, e.radius, e.color || '#FF4444');
         ctx.beginPath();
         ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -1576,8 +1661,8 @@ function drawEnemyEntity(e) {
         const LOD_MIN_SQ = 500 * 500; // 250000
 
         if (distSq > LOD_MIN_SQ) {
-            // Minimal: just a colored dot
-            ctx.fillStyle = e.color || '#FF4444';
+            // Minimal: just a colored dot (gradient for visual depth)
+            ctx.fillStyle = makeBodyGradient(ctx, e.x, e.y, e.radius, e.color || '#FF4444');
             ctx.beginPath();
             ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
             ctx.fill();
@@ -1612,8 +1697,8 @@ function drawEnemyEntity(e) {
         ctx.rotate(e.deathRotation);
         ctx.globalAlpha = Math.max(0.1, scale / 1.3);
 
-        // Simplified body for death anim
-        ctx.fillStyle = e.color || '#FF4444';
+        // Simplified body for death anim (gradient)
+        ctx.fillStyle = makeBodyGradient(ctx, 0, 0, e.radius, e.color || '#FF4444');
         ctx.beginPath();
         ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -1663,8 +1748,18 @@ function drawEnemyEntity(e) {
         drawGlow(ctx, e.x, e.y, e.radius * 2, '#FFD700', 0.2);
     }
 
+    // Boss body shadow glow (drop-shadow on the body silhouette)
+    if (e.isBoss) {
+        ctx.shadowColor = e.color || '#FF4444';
+        ctx.shadowBlur = 14;
+    }
+
     // Body (dispatches to type-specific draw fn or circle fallback)
     drawEnemyBody(e);
+
+    if (e.isBoss) {
+        ctx.shadowBlur = 0;
+    }
 
     // --- Status visual indicators (034) ---
 
@@ -1808,12 +1903,29 @@ function drawEnemyEntity(e) {
 // --- Enemy body dispatch ---
 
 function drawEnemyCircleFallback(e) {
-    // Body
+    // Body — radial gradient for depth
     const slowed = e.slowTimer > 0;
-    ctx.fillStyle = slowed ? '#88BBDD' : (e.color || '#FF4444');
+    const bodyColor = slowed ? '#88BBDD' : (e.color || '#FF4444');
+    ctx.fillStyle = makeBodyGradient(ctx, e.x, e.y, e.radius, bodyColor);
     ctx.beginPath();
     ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
     ctx.fill();
+    // Dark silhouette outline
+    ctx.strokeStyle = mixColor(bodyColor, '#000000', 0.5);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Small eye highlights (subtle, on top of body before any face overlay)
+    const eyeR = Math.max(1, e.radius * 0.12);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.arc(e.x - e.radius * 0.3, e.y - e.radius * 0.2, eyeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.2, eyeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
 
     // Eyes facing player direction
     if (e.targetAngle !== undefined) {
@@ -2677,11 +2789,26 @@ function drawXPGem(gem) {
     const glowSize = r * (2.5 + tierScale * 0.5);
     drawGlow(ctx, gem.x, gem.y, glowSize, gem.color, glowAlpha);
 
-    // 8-pointed star gem shape
+    // Soft halo using pulse phase
+    const haloPhase = gameTime * 6 + gem.x;
+    const haloR = r * (1.8 + 0.2 * Math.sin(haloPhase));
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = gem.color;
+    ctx.beginPath();
+    ctx.arc(gem.x, gem.y, haloR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // 8-pointed star gem shape (with radial gradient + drop shadow for vivid core)
     const points = 8;
     const outerR = r;
     const innerR = r * 0.5;
-    ctx.fillStyle = gem.color;
+    const gemGrad = ctx.createRadialGradient(gem.x, gem.y, 0, gem.x, gem.y, outerR);
+    gemGrad.addColorStop(0, mixColor(gem.color, '#FFFFFF', 0.5));
+    gemGrad.addColorStop(1, gem.color);
+    ctx.shadowColor = gem.color;
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = gemGrad;
     ctx.beginPath();
     for (let i = 0; i < points * 2; i++) {
         const angle = (i * Math.PI) / points - Math.PI / 2;
@@ -2693,6 +2820,7 @@ function drawXPGem(gem) {
     }
     ctx.closePath();
     ctx.fill();
+    ctx.shadowBlur = 0;
 
     // Inner facet refraction lines
     ctx.strokeStyle = '#FFFFFF';
@@ -2736,6 +2864,67 @@ function drawXPGem(gem) {
     ctx.globalAlpha = 1.0;
 }
 
+function drawPickup(pickup) {
+    const pulse = 1 + Math.sin(gameTime * 5 + pickup.x * 0.03) * 0.08;
+    const r = pickup.radius * pulse;
+    const alpha = pickup.alpha ?? 1;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if (pickup.type === 'health') {
+        drawGlow(ctx, pickup.x, pickup.y, r * 2.4, '#FF6677', 0.25);
+        // Bright pink → red rim radial gradient with warm shadow
+        const hpGrad = ctx.createRadialGradient(pickup.x - r * 0.3, pickup.y - r * 0.3, r * 0.1, pickup.x, pickup.y, r);
+        hpGrad.addColorStop(0, '#FFAACC');
+        hpGrad.addColorStop(1, '#FF3355');
+        ctx.shadowColor = '#FF5577';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = hpGrad;
+        ctx.beginPath();
+        ctx.arc(pickup.x, pickup.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(pickup.x - r * 0.55, pickup.y - r * 0.18, r * 1.1, r * 0.36);
+        ctx.fillRect(pickup.x - r * 0.18, pickup.y - r * 0.55, r * 0.36, r * 1.1);
+    } else if (pickup.type === 'bomb') {
+        drawGlow(ctx, pickup.x, pickup.y, r * 2.2, '#FFAA44', 0.22);
+        const bombGrad = ctx.createRadialGradient(pickup.x - r * 0.3, pickup.y - r * 0.3, r * 0.1, pickup.x, pickup.y, r);
+        bombGrad.addColorStop(0, '#555555');
+        bombGrad.addColorStop(1, '#111111');
+        ctx.shadowColor = COLOR_GLOW_WARM;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = bombGrad;
+        ctx.beginPath();
+        ctx.arc(pickup.x, pickup.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#FF9922';
+        ctx.beginPath();
+        ctx.moveTo(pickup.x, pickup.y - r * 1.2);
+        ctx.lineTo(pickup.x + r * 0.32, pickup.y - r * 0.4);
+        ctx.lineTo(pickup.x - r * 0.32, pickup.y - r * 0.4);
+        ctx.closePath();
+        ctx.fill();
+    } else if (pickup.type === 'magnet') {
+        drawGlow(ctx, pickup.x, pickup.y, r * 2.4, '#66BBFF', 0.24);
+        ctx.shadowColor = COLOR_GLOW_WARM;
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = '#66BBFF';
+        ctx.lineWidth = Math.max(2, r * 0.35);
+        ctx.beginPath();
+        ctx.arc(pickup.x, pickup.y, r * 0.8, Math.PI * 0.12, Math.PI * 0.88);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#AEE0FF';
+        ctx.fillRect(pickup.x - r * 0.78, pickup.y + r * 0.08, r * 0.3, r * 0.45);
+        ctx.fillRect(pickup.x + r * 0.48, pickup.y + r * 0.08, r * 0.3, r * 0.45);
+    }
+
+    ctx.restore();
+}
+
 function drawProjectileTrail(p) {
     if (p.trailCount <= 0) return;
     // Skip trails for types that don't move or have custom visuals
@@ -2748,11 +2937,13 @@ function drawProjectileTrail(p) {
     const vl = p.visualLevel || 0;
     const alphaBoost = vl >= 2 ? 0.7 : (vl >= 1 ? 0.55 : 0.4);
 
+    ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < p.trailCount; i++) {
         // Read from ring buffer: oldest to newest
         const idx = (p.trailHead - p.trailCount + i + 6) % 6;
         const age = (p.trailCount - i) / p.trailCount; // 1 = oldest, 0 = newest
-        const alpha = (1 - age) * alphaBoost;
+        // Alpha bumped 1.3x and capped at 0.9 for richer trails
+        const alpha = Math.min(0.9, (1 - age) * alphaBoost * 1.3);
         const r = p.radius * (1 - age * 0.5);
         if (alpha < 0.02) continue;
         ctx.globalAlpha = alpha;
@@ -2772,6 +2963,7 @@ function drawProjectileTrail(p) {
         ctx.fill();
     }
 
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1.0;
 }
 
@@ -2808,21 +3000,31 @@ function drawNormalProjectile(p) {
     // Glow — intensifies with visual level (039)
     const glowAlpha = vl >= 2 ? 0.4 : (vl >= 1 ? 0.32 : 0.25);
     const glowMult = vl >= 2 ? 3.5 : 3;
+    const baseColor = p.color || COLOR_BULLET;
+
     ctx.globalAlpha = glowAlpha;
-    ctx.fillStyle = p.color || COLOR_BULLET;
+    ctx.fillStyle = baseColor;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius * glowMult, 0, Math.PI * 2);
     ctx.fill();
-    // Core
     ctx.globalAlpha = 1.0;
-    ctx.fillStyle = '#FFFFFF';
+
+    // Radial gradient core: outer transparent → mid bullet → inner core
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = baseColor;
+    ctx.shadowBlur = 8;
+
+    const grad = ctx.createRadialGradient(p.x, p.y, p.radius * 0.3, p.x, p.y, p.radius * 1.6);
+    grad.addColorStop(0, COLOR_BULLET_CORE);
+    grad.addColorStop(0.55, baseColor);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, p.radius * 1.6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = p.color || COLOR_BULLET;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * 0.6, 0, Math.PI * 2);
-    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
 }
 
 function drawLightning(p) {
@@ -3119,20 +3321,32 @@ function drawFrostBurst(p) {
 
 function drawEnemyProjectile(p) {
     // Enemy bullet — distinct color
+    const baseColor = p.color || '#AAFF44';
+    const innerCore = mixColor(baseColor, '#FFFFFF', 0.6);
+
     ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#AAFF44';
+    ctx.fillStyle = baseColor;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius * 2.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
-    ctx.fillStyle = '#DDFF88';
+
+    // Radial gradient: outer transparent → mid color → inner whitened core
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = baseColor;
+    ctx.shadowBlur = 8;
+
+    const grad = ctx.createRadialGradient(p.x, p.y, p.radius * 0.3, p.x, p.y, p.radius * 1.6);
+    grad.addColorStop(0, innerCore);
+    grad.addColorStop(0.55, baseColor);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, p.radius * 1.6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#AAFF44';
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * 0.5, 0, Math.PI * 2);
-    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
 }
 
 function drawZone(p) {
@@ -3365,6 +3579,20 @@ function drawOrbital(orb) {
     ctx.arc(orb.x, orb.y, r * corePulse, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
+
+    // Inner white core + translucent outer halo for richer glow
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = orb.color;
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, r * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
 }
 
 // --- HUD (screen space) ---
@@ -3466,6 +3694,42 @@ function drawHUD(player, state) {
     ctx.font = '10px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`${Math.ceil(player.health)} / ${player.maxHealth}`, hpBarX + 14, hpBarY + 11);
+
+    // Temporary magnet buff timer
+    const magnetTime = (player.tempMagnetUntil || 0) - performance.now() * 0.001;
+    if (magnetTime > 0) {
+        ctx.fillStyle = '#66BBFF';
+        ctx.font = '10px monospace';
+        ctx.fillText(`MAGNET ${magnetTime.toFixed(1)}s`, hpBarX, hpBarY + hpBarH + 10);
+    }
+
+    // Dash cooldown indicator
+    if (typeof player.baseDashCD === 'number' && typeof player.dashCooldown === 'number') {
+        const dashX = hpBarX + hpBarW + 8;
+        const dashY = hpBarY;
+        const dashW = 34;
+        const dashH = hpBarH;
+        const dashRatio = Math.max(0, Math.min(1, 1 - (player.dashCooldown / Math.max(player.baseDashCD, 0.001))));
+        const dashReady = player.dashCooldown <= 0;
+
+        ctx.fillStyle = '#111';
+        drawHUDRoundRect(ctx, dashX, dashY, dashW, dashH, 3);
+
+        ctx.fillStyle = dashReady ? '#44CCDD' : '#555';
+        if (dashRatio > 0) {
+            drawHUDRoundRectClipped(ctx, dashX + 1, dashY + 1, (dashW - 2) * dashRatio, dashH - 2, 2);
+        }
+
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 1;
+        drawHUDRoundRectStroke(ctx, dashX, dashY, dashW, dashH, 3);
+
+        ctx.fillStyle = '#E6F6FF';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('DASH', dashX + dashW / 2, dashY + 10);
+        ctx.textAlign = 'left';
+    }
 
     // === Weapon slots (top left, below HP) ===
     let wy = 30;
